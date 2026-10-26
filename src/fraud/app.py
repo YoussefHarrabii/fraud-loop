@@ -59,6 +59,7 @@ def health() -> dict:
         "threshold": b.threshold,
         "model_version": b.card["created_at"],
         "counts": store.counts(),
+        "llm": {**store.llm_usage_today(), "cap": case_facts.daily_cap()},
     }
 
 

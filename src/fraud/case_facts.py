@@ -10,11 +10,20 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?%?")
+DEFAULT_DAILY_CAP = 40
 
 
 def _load_env() -> None:
     load_dotenv(ROOT / ".env")
     load_dotenv(ROOT / "secrets" / "llm.env")
+
+
+def daily_cap() -> int:
+    """LLM calls allowed per UTC day across the whole process."""
+    try:
+        return max(0, int(os.getenv("LLM_DAILY_CAP", DEFAULT_DAILY_CAP)))
+    except ValueError:
+        return DEFAULT_DAILY_CAP
 
 
 def build_facts(tx: dict, history, out: dict, row: dict) -> list[dict]:
@@ -105,6 +114,10 @@ def summarize(facts: list[dict]) -> tuple[str, str]:
     fallback = template_summary(facts)
     if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
         return fallback, "template"
+    from fraud import store
+
+    if not store.consume_llm_credit(daily_cap()):
+        return fallback, "template_capped"
     try:
         text = _call_llm(facts)
         if validate_summary(text, facts):

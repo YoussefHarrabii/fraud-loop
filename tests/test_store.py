@@ -98,3 +98,16 @@ def test_recent_requests_and_summary_update(db):
     store.update_case_summary(cid, "new summary", "llm")
     assert store.get_case(cid)["summary"] == "new summary"
     assert store.recent_requests(5)[0]["id"] == rid
+
+
+def test_llm_credit_stops_at_the_limit(db):
+    assert store.llm_usage_today()["used"] == 0
+    assert store.consume_llm_credit(2) is True
+    assert store.consume_llm_credit(2) is True
+    assert store.consume_llm_credit(2) is False
+    assert store.llm_usage_today()["used"] == 2
+
+
+def test_llm_credit_zero_never_grants(db):
+    assert store.consume_llm_credit(0) is False
+    assert store.llm_usage_today()["used"] == 0

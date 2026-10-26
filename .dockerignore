@@ -14,8 +14,10 @@ secrets
 DOCS
 tests
 dev
-scripts
-configs
+scripts/*
+!scripts/fetch_data.py
+configs/*
+!configs/data.json
 data/generated
 data/generated_buggy
 data/processed

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: fraud-review-loop
+    runtime: docker
+    dockerfilePath: ./Dockerfile.deploy
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: LLM_DAILY_CAP
+        value: "40"
+      # Set the value in the Render dashboard. `sync: false` keeps it out of this
+      # file, out of git and out of the image.
+      - key: OPENAI_API_KEY
+        sync: false

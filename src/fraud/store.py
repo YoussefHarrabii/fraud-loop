@@ -21,8 +21,17 @@ def connect() -> sqlite3.Connection:
     return con
 
 
+LLM_USAGE_DDL = """
+    CREATE TABLE IF NOT EXISTS llm_usage (
+        day TEXT PRIMARY KEY,
+        used INTEGER NOT NULL
+    )
+"""
+
+
 def init_db() -> None:
     con = connect()
+    con.execute(LLM_USAGE_DDL)
     con.execute("""
         CREATE TABLE IF NOT EXISTS requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,6 +258,42 @@ def case_stats() -> dict:
         "reviewed": reviewed,
         "precision": confirmed / reviewed if reviewed else None,
     }
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def consume_llm_credit(limit: int) -> bool:
+    """Spend one of today's LLM credits. False when the day is used up.
+
+    The UPDATE is a single statement, so two workers cannot both take the last
+    credit. One credit covers a call plus its single retry.
+    """
+    day = _today()
+    con = connect()
+    try:
+        con.execute(LLM_USAGE_DDL)
+        con.execute("INSERT OR IGNORE INTO llm_usage (day, used) VALUES (?, 0)", (day,))
+        row = con.execute(
+            "UPDATE llm_usage SET used = used + 1 WHERE day = ? AND used < ? RETURNING used",
+            (day, max(0, int(limit))),
+        ).fetchone()
+        con.commit()
+    finally:
+        con.close()
+    return row is not None
+
+
+def llm_usage_today() -> dict:
+    day = _today()
+    con = connect()
+    try:
+        con.execute(LLM_USAGE_DDL)
+        row = con.execute("SELECT used FROM llm_usage WHERE day = ?", (day,)).fetchone()
+    finally:
+        con.close()
+    return {"day": day, "used": int(row[0]) if row else 0}
 
 
 def counts() -> dict:
