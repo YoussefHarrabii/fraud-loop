@@ -1,0 +1,19 @@
+{
+  "model": "lightgbm",
+  "params": {
+    "learning_rate": 0.035,
+    "num_leaves": 95,
+    "min_data_in_leaf": 140,
+    "feature_fraction": 0.90,
+    "bagging_fraction": 0.90,
+    "bagging_freq": 1,
+    "lambda_l1": 0.10,
+    "lambda_l2": 2.0
+  },
+  "rounds": 350,
+  "target_recall": 0.90,
+  "calibration": "platt",
+  "calibration_month": "2020-10",
+  "false_alarm_cost": 7.0,
+  "recovery": 0.8
+}

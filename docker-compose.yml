@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      FRAUD_DB: /app/data/app.db
+      FRAUD_ARTIFACTS: /app/artifacts/final

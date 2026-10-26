@@ -1,0 +1,44 @@
+# local data (generated, processed, app DB)
+data/
+
+# working docs, not published yet
+DOCS/
+
+# local scripts, analyses and experiments
+dev/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# secrets
+kaggle.json
+secrets/
+
+# mlflow local
+mlruns/
+mlartifacts/
+
+# os and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.ipynb_checkpoints/
+*.log
+
+# experiments and model artifacts
+mlflow.db
+mlflow.db-*
+artifacts/
+# local env (prefer secrets/llm.env)
+.env
+.env.*
+handoff.md
