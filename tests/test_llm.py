@@ -50,7 +50,27 @@ def test_explicit_base_url_wins(monkeypatch):
 def test_no_key_means_no_config(monkeypatch):
     for name in ("OPENAI_API_KEY", "OPENCODE_KEY", "OPENCODE_API_KEY", "OPENROUTER_API_KEY"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("LLM_KEY_FILE", raising=False)
     monkeypatch.setattr(case_facts, "_load_env", lambda: None)
+    assert case_facts.llm_config() is None
+
+
+def test_key_file_keeps_the_value_out_of_the_environment(tmp_path, monkeypatch):
+    secret = tmp_path / "key"
+    secret.write_text("oc_from_file\n", encoding="utf-8")
+    for name in ("OPENAI_API_KEY", "OPENCODE_KEY", "OPENCODE_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LLM_KEY_FILE", str(secret))
+    monkeypatch.setenv("LLM_BASE_URL", "https://opencode.ai/inference/go/openai/v1")
+    monkeypatch.setenv("OPENCODE_MODEL", "deepseek-v4.1-flash")
+    config = case_facts.llm_config()
+    assert config["key"] == "oc_from_file"
+    assert config["model"] == "deepseek-v4.1-flash"
+
+
+def test_unreadable_key_file_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setenv("LLM_KEY_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-be-used")
     assert case_facts.llm_config() is None
 
 

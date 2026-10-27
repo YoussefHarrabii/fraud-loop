@@ -157,3 +157,15 @@ fails the build at the fetch step instead of shipping a mismatched database.
 Secret handling: the key is set in the host dashboard (`sync: false` in `render.yaml`),
 never in git and never in a layer. `LLM_DAILY_CAP` bounds the spend if the URL is public,
 on top of a hard monthly cap on the provider key itself.
+
+For a local container, --env-file leaves the value in Docker metadata. Mount it instead:
+
+```
+docker run --rm -p 8000:8000 \
+  -e LLM_KEY_FILE=/run/secrets/key \
+  -e LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1 \
+  -e OPENCODE_MODEL=deepseek-v4.1-flash \
+  -v "$PWD/secrets/llm.key:/run/secrets/key:ro" fraud-loop
+```
+
+With that mount, docker inspect and /proc/1/environ show a path, not the key.

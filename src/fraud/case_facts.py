@@ -23,17 +23,33 @@ def _load_env() -> None:
     load_dotenv(ROOT / "secrets" / "llm.env")
 
 
+def _key_from_file() -> str:
+    """Read the key from `LLM_KEY_FILE`. Returns "" when unset or unreadable."""
+    path = os.getenv("LLM_KEY_FILE", "").strip()
+    if not path:
+        return ""
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def llm_config() -> dict | None:
     """Provider settings from the environment. None when no key is set.
 
-    Order: OpenAI, then OpenCode Console, then OpenRouter. `LLM_BASE_URL` wins over all
-    three so any other OpenAI-compatible endpoint works without code changes.
+    A key file wins over the environment, so `docker run -v key:/run/key
+    -e LLM_KEY_FILE=/run/key` never puts the value in container metadata. With a key file
+    set but unreadable there is no fallback: a typo must not quietly switch provider.
+    Order otherwise: OpenAI, OpenCode, OpenRouter. `LLM_BASE_URL` wins over the defaults.
     """
     _load_env()
+    file_key = _key_from_file()
+    if os.getenv("LLM_KEY_FILE") and not file_key:
+        return None
     openai_key = os.getenv("OPENAI_API_KEY")
     opencode_key = os.getenv("OPENCODE_KEY") or os.getenv("OPENCODE_API_KEY")
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
-    key = openai_key or opencode_key or openrouter_key
+    key = file_key or openai_key or opencode_key or openrouter_key
     if not key:
         return None
     if os.getenv("LLM_BASE_URL"):
@@ -42,6 +58,8 @@ def llm_config() -> dict | None:
         base = OPENAI_BASE
     elif opencode_key:
         base = OPENCODE_BASE
+    elif file_key:
+        base = OPENAI_BASE
     else:
         base = OPENROUTER_BASE
     model = os.getenv("LLM_MODEL") or os.getenv("OPENCODE_MODEL") or "gpt-4o-mini"
