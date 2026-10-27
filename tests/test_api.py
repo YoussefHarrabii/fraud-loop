@@ -194,3 +194,40 @@ def test_exhausted_key_never_reaches_the_provider(client, keys, monkeypatch):
     assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]}).status_code == 429
     assert calls == []
     assert store.key_use_count(access.digest(keys["good"])) == 2
+
+def test_score_is_rate_limited(client, monkeypatch):
+    monkeypatch.setenv("FRAUD_LIMIT_SCORE", "2")
+    assert client.post("/score", json=_payload()).status_code == 200
+    assert client.post("/score", json=_payload()).status_code == 200
+    blocked = client.post("/score", json=_payload())
+    assert blocked.status_code == 429
+    assert blocked.headers["Retry-After"] == "60"
+    assert blocked.json()["detail"] == "rate limited"
+
+
+def test_drift_and_decision_are_rate_limited(client, monkeypatch):
+    monkeypatch.setenv("FRAUD_LIMIT_DRIFT", "1")
+    assert client.post("/demo/inject-drift?n=1").status_code == 200
+    assert client.post("/demo/inject-drift?n=1").status_code == 429
+
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+    monkeypatch.setenv("FRAUD_LIMIT_DECISION", "1")
+    body = {"decision": "false_alarm", "analyst": "t"}
+    assert client.post(f"/cases/{case_id}/decision", json=body).status_code == 200
+    assert client.post(f"/cases/{case_id}/decision", json=body).status_code == 429
+
+
+def test_access_probing_is_rate_limited(client, monkeypatch):
+    monkeypatch.setenv("FRAUD_LIMIT_ACCESS", "2")
+    assert client.get("/access", headers={"X-Access-Key": "x"}).status_code == 200
+    assert client.get("/access", headers={"X-Access-Key": "x"}).status_code == 200
+    assert client.get("/access", headers={"X-Access-Key": "x"}).status_code == 429
+
+
+def test_security_headers(client):
+    response = client.get("/")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+    assert "Strict-Transport-Security" not in response.headers

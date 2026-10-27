@@ -19,10 +19,16 @@ RUN --mount=type=bind,source=pyproject.toml,target=/build/pyproject.toml \
 
 FROM base AS app
 
-COPY src ./src
-COPY configs/access_keys.json ./configs/access_keys.json
-COPY data/app.db ./data/app.db
-COPY artifacts/final ./artifacts/final
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data /app/artifacts \
+    && chown 10001:10001 /app /app/data /app/artifacts
+
+COPY --chown=10001:10001 src ./src
+COPY --chown=10001:10001 configs/access_keys.json ./configs/access_keys.json
+COPY --chown=10001:10001 data/app.db ./data/app.db
+COPY --chown=10001:10001 artifacts/final ./artifacts/final
+
+USER appuser
 
 ENV PYTHONPATH=/app/src \
     FRAUD_DB=/app/data/app.db \

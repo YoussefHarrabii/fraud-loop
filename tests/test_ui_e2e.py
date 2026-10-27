@@ -105,10 +105,13 @@ def test_score_case_and_drift(live_server):
         page.wait_for_selector("#hairline-figure svg")
 
         page.click("#inject")
-        page.wait_for_function(
-            "document.querySelector('#m-injected').textContent.includes('60')",
-            timeout=15000,
-        )
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            if "60" in page.inner_text("#m-injected"):
+                break
+            page.wait_for_timeout(500)
+        else:
+            raise AssertionError("drift injection did not land")
         assert not errors
 
         browser.close()

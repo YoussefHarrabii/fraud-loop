@@ -47,3 +47,14 @@ def test_data_manifest_shape():
     manifest = json.loads((ROOT / "configs" / "data.json").read_text(encoding="utf-8"))
     assert set(manifest) >= {"url", "sha256"}
     assert len(manifest["sha256"]) == 64
+
+def test_images_run_as_non_root():
+    for name in ("Dockerfile", "Dockerfile.deploy"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert "USER appuser" in text, name
+        assert "USER root" not in text, name
+
+
+def test_ci_scans_dependencies():
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "pip-audit" in text

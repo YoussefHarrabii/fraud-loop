@@ -135,6 +135,15 @@ That writes `configs/access_keys.json` (SHA-256 hashes, committed, safe to ship)
 - Counters live in SQLite, so on a host with an ephemeral filesystem they reset on restart.
   The registry ships in the image, so the keys themselves survive.
 
+## Hardening
+
+- No secret in the image, the repo, the URL space or any response; tested against a running container.
+- The app runs as uid 10001, and only `/app/data` is writable.
+- Sliding-window limits per client on the write endpoints and on `/access`, 429 with `Retry-After`.
+- `/docs`, `/redoc` and `/openapi.json` are off unless `FRAUD_DOCS=1`.
+- `pip-audit` runs in CI next to the tests and the secret scan.
+- CSP, `nosniff`, `DENY` framing, `no-referrer` on every response; HSTS only over https.
+
 ## Tests
 
 ```

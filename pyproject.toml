@@ -22,7 +22,7 @@ dependencies = [
 train = ["mlflow>=3", "optuna>=4", "xgboost>=3"]
 
 [dependency-groups]
-dev = ["playwright>=1.50", "pytest>=8", "pytest-cov>=6", "ruff>=0.6"]
+dev = ["pip-audit>=2.7", "playwright>=1.50", "pytest>=8", "pytest-cov>=6", "ruff>=0.6"]
 
 [tool.uv]
 package = false

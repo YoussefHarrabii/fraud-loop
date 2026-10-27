@@ -23,10 +23,16 @@ RUN --mount=type=bind,source=pyproject.toml,target=/build/pyproject.toml \
 
 FROM base AS app
 
-COPY src ./src
-COPY configs/data.json ./configs/data.json
-COPY configs/access_keys.json ./configs/access_keys.json
-COPY scripts/fetch_data.py ./scripts/fetch_data.py
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data /app/artifacts \
+    && chown 10001:10001 /app /app/data /app/artifacts
+
+COPY --chown=10001:10001 src ./src
+COPY --chown=10001:10001 configs/data.json ./configs/data.json
+COPY --chown=10001:10001 configs/access_keys.json ./configs/access_keys.json
+COPY --chown=10001:10001 scripts/fetch_data.py ./scripts/fetch_data.py
+
+USER appuser
 
 RUN python scripts/fetch_data.py --dest /app \
     && test -s /app/data/app.db \

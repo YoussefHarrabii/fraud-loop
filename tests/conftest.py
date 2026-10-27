@@ -139,3 +139,10 @@ def keys(tmp_path, monkeypatch):
     monkeypatch.setattr(access, "REGISTRY", path)
     monkeypatch.setattr(access, "CACHE", {"mtime": None, "keys": {}})
     return {"good": GOOD_KEY, "expired": EXPIRED_KEY}
+
+@pytest.fixture(autouse=True)
+def _fresh_limits():
+    from fraud import limits
+    limits.reset()
+    yield
+    limits.reset()
