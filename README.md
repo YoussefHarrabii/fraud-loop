@@ -1,14 +1,14 @@
 ﻿# Fraud review loop
 
-An end-to-end fraud detection loop built around a model that is already good enough:
-the work here is everything that turns a score into a reviewable case, and a case into
-a retraining signal.
+An end-to-end fraud detection loop built around a model that is already good enough. The
+interesting part is everything that turns a score into a reviewable case, and a case into a
+retraining signal.
 
 Synthetic card data from [Sparkov](https://github.com/namebrandon/Sparkov_Data_Generation).
 LightGBM scorer, Platt-calibrated, threshold picked by cost rather than by a round number.
-Analyst queue at card level. LLM case summaries that are checked against the facts and
-fall back to a deterministic template. Monitoring, a retrain trigger, and a promotion
-gate. One page of UI. Tests, CI and a container.
+Analyst queue at card level. LLM case summaries that are checked against the facts and fall
+back to a deterministic template. Monitoring, a retrain trigger, a promotion gate, one page
+of UI, tests, CI and a container.
 
 ## Numbers
 
@@ -25,70 +25,69 @@ Chronological split, no shuffling.
 | Share of fraud dollars caught | 99.36 percent |
 | Holdout PR-AUC | 0.886 |
 
-The PR-AUC was 0.977 before the data audit. Two bugs inflated it: velocity windows
-divided microseconds as if they were nanoseconds, so "last hour" meant 42 days, and the
-Sparkov generator tied daypart and category to the date. Both are fixed and the data is
-regenerated. 0.886 is the honest number.
+The PR-AUC was 0.977 before the data audit. Two bugs inflated it: velocity windows divided
+microseconds as if they were nanoseconds, so "last hour" meant 42 days, and the generator
+tied daypart and category to the date. Both are fixed and the data is regenerated. 0.886 is
+the honest number.
 
 ## The loop
 
-```
-Sparkov CSV
-   |
-   v
-features (past-only history, window counts, card age, merchant novelty)
-   |
-   v
-LightGBM ---> Platt calibration ---> cost threshold ---> score
-   |                                                       |
-   |                                                       v
-   |                                             flag / pass per transaction
-   |                                                       |
-   |                                                       v
-   |                                             case per card, with facts
-   |                                                       |
-   |                                              template or LLM summary
-   |                                                       |
-   |                                                       v
-   |                                             analyst: confirm / false alarm
-   |                                                       |
-   +------------------ retrain trigger <-------------------+
-                            |
-                            v
-                   candidate ---> promotion gate ---> final
+```mermaid
+flowchart TD
+    A[Sparkov transactions] --> B[Features<br/>past-only history, velocity, card age, merchant novelty]
+    B --> C[LightGBM]
+    C --> D[Platt calibration]
+    D --> E[Cost threshold<br/>90 percent recall on validation]
+    E --> F{Flag?}
+    F -- pass --> G[Logged, no case]
+    F -- flag --> H[Case per card<br/>eight facts computed in code]
+    H --> I[Template summary]
+    H -. valid invitation key .-> J[Model-written summary]
+    J --> K{Every number and citation checks out?}
+    K -- no --> I
+    K -- yes --> L[Case shows the model summary]
+    I --> M[Analyst: confirm or false alarm]
+    L --> M
+    M --> N[Labels]
+    N --> O{Retrain gate<br/>recall and cost}
+    O -- pass --> P[Candidate goes live]
+    O -- fail --> Q[Held]
+    P --> C
 ```
 
 - **Scoring** is per transaction. **Cases** are per card, because an analyst reviews the
   card, not the row.
 - **No blocking.** The decision is written after authorisation, as a review queue.
-- **Facts before prose.** The summary is built from eight numbered facts (amount versus
+- **Facts before prose.** The summary is built from eight numbered facts (amount against the
   card median, local hour, velocity, merchant novelty, score against threshold). The model
-  only rewrites them. Every number in the output must exist in the facts, every sentence
-  must cite a fact id, and no verdict is allowed.
-- **The gate.** A candidate model replaces the live one only if its recall does not drop
-  and its cost is lower on a paired bootstrap.
-- **Monitoring** uses PSI and KS against the training reference, plus the live flag rate
-  and realised precision from closed cases. A drift injector pushes 60 synthetic
-  transactions so the panels move on demand.
+  only rewrites them. Every number in the output must exist in the facts, every sentence must
+  cite a fact id, and no verdict is allowed. Two failures and the template is used.
+- **The gate.** A candidate replaces the live model only if its recall does not drop and its
+  cost is lower on a paired bootstrap.
+- **Monitoring** uses PSI and KS against the training reference, plus the live flag rate and
+  realised precision from closed cases. A drift injector pushes 60 transactions so the panels
+  move on demand.
 
 ## What is real and what is not
 
-Real: the pipeline, the model, the calibration, the threshold, the numbers above, the
-store, the case workflow, the validator, the gate, the tests.
+Real: the pipeline, the model, the calibration, the threshold, the numbers above, the store,
+the case workflow, the validator, the gate, the tests.
 
-Simulated: the transactions. Sparkov is a generator, not production data. There is no
-real chargeback feed, so "confirmed fraud" is an analyst click on a synthetic label.
+Simulated: the transactions. Sparkov is a generator, not production data. There is no real
+chargeback feed, so "confirmed fraud" is an analyst click on a synthetic label.
 
-Not built: authentication and per-user keys, a payment or chargeback integration,
+Not built: a chargeback or payment integration, user accounts beyond the invitation keys,
 multi-worker deployment.
 
 ## Layout
 
 ```
-src/fraud/       app, serving, features, store, case_facts, monitoring, policy, static UI
-scripts/         data build, reference profile, retrain trigger, app DB, data publish
-configs/         final and candidate model config, data manifest
-tests/           unit, API, pipeline, LLM, concurrency, security, Playwright
+src/fraud/       app, serving, features, store, access, limits, retention,
+                 case_facts, monitoring, policy, static UI
+scripts/         data build, reference profile, retrain trigger, app DB, key mint,
+                 demo reset, bundle publish
+configs/         model configs, access-key hashes, data manifest
+tests/           unit, API, pipeline, LLM, retention, security, concurrency, Playwright
 ```
 
 ## Run
@@ -98,22 +97,21 @@ uv sync --frozen --all-groups
 uv run uvicorn fraud.app:app --host 127.0.0.1 --port 8000
 ```
 
-The app needs `data/app.db` and `artifacts/final`, both gitignored and both built by the
-scripts in `scripts/`. Without them `GET /health` fails at startup.
+The app needs `data/app.db` and `artifacts/final`. Both are gitignored and both are built by
+the scripts in `scripts/`.
 
-LLM summaries are optional. Put the key in `secrets/llm.env` (ignored) or export it:
+LLM summaries are optional and off without a key:
 
 ```
-OPENCODE_KEY=oc_...
-OPENCODE_MODEL=deepseek-v4.1-flash
-LLM_DAILY_CAP=40
+OPENAI_API_KEY=...        # or OPENROUTER_API_KEY, or any compatible key
+LLM_MODEL=gpt-4o-mini
+LLM_BASE_URL=...          # only for a non-default endpoint
+LLM_DAILY_CAP=40          # calls per UTC day, process-wide
 ```
 
-`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or any OpenAI-compatible endpoint via
-`OPENAI_API_KEY` + `LLM_BASE_URL` work the same way. `LLM_BASE_URL` always wins.
-
-No key means the template summary, which is the same text minus the rewriting. A failed
-or invalid call also falls back to the template.
+Set `LLM_KEY_FILE` instead to read the key from a mounted file, which keeps it out of the
+process environment. No key means the template summary, which is the same text minus the
+rewriting.
 
 ## Access keys
 
@@ -123,40 +121,35 @@ The desk is open. The model-written summary is not.
 uv run python scripts/mint_keys.py --count 100 --uses 5 --days 90
 ```
 
-That writes `configs/access_keys.json` (SHA-256 hashes, committed, safe to ship) and
-`secrets/keys.csv` (plaintext, ignored, the only copy). Hand one key per application.
+That writes `configs/access_keys.json` (SHA-256 hashes, committed) and `secrets/keys.csv`
+(plaintext, ignored, the only copy). One key per application.
 
 - `POST /cases/{id}/report` with `X-Access-Key` spends one use and queues the summary.
 - `GET /access` reports remaining uses without spending one.
 - 401 unknown, 403 expired, 429 exhausted.
 - A use is refunded when the provider does not deliver, so a failed call costs nothing.
-- Keys never appear in a URL, a log line or a response. The browser keeps yours in
-  `sessionStorage` for the tab and sends it as a header.
-- Counters live in SQLite, so on a host with an ephemeral filesystem they reset on restart.
-  The registry ships in the image, so the keys themselves survive.
+- The key travels in a header, never a URL, and the browser keeps it in `sessionStorage` for
+  the tab.
 
 ## Demo data
 
-Cases and request rows are what visitors leave behind, so they expire. `FRAUD_RETENTION_HOURS`
-defaults to 24 and the purge runs at startup and at most once an hour on writes. Key usage
-never expires: that would hand a spent invitation its uses back.
+Cases and requests are what visitors leave behind, so they expire after
+`FRAUD_RETENTION_HOURS` (default 24). Key usage never expires: that would hand a spent
+invitation its uses back.
 
 ```
-uv run python scripts/reset_demo.py             # cases, requests, key and llm usage
+uv run python scripts/reset_demo.py            # cases, requests, key and llm usage
 uv run python scripts/reset_demo.py --keep-keys
 ```
 
-Run it before `publish_data.py` so test rows never ship inside the image. Transactions are
-never touched by either the script or the purge.
-
 ## Hardening
 
-- No secret in the image, the repo, the URL space or any response; tested against a running container.
-- The app runs as uid 10001, and only `/app/data` is writable.
-- Sliding-window limits per client on the write endpoints and on `/access`, 429 with `Retry-After`.
+- No secret in the image, the repo, the URL space or any response.
+- Runs as uid 10001; only the database directory is writable.
+- Per-client rate limits on the write endpoints and on `/access`, 429 with `Retry-After`.
 - `/docs`, `/redoc` and `/openapi.json` are off unless `FRAUD_DOCS=1`.
-- `pip-audit` runs in CI next to the tests and the secret scan.
-- CSP, `nosniff`, `DENY` framing, `no-referrer` on every response; HSTS only over https.
+- CSP, `nosniff`, `DENY` framing, `no-referrer`; HSTS over https only.
+- `pip-audit` and a secret scan run in CI next to the tests.
 
 ## Tests
 
@@ -166,52 +159,18 @@ uv run pytest --cov
 RUN_UI=1 uv run pytest tests/test_ui_e2e.py
 ```
 
-95 tests, 97 percent statement coverage on the core modules, gate at 80. CI runs the suite
-on Python 3.11 and 3.12, builds the dependency image, runs the browser test, and scans for
-secrets.
+127 tests, 97 percent statement coverage on the core modules, gate at 80. CI runs the suite on
+Python 3.11 and 3.12, audits dependencies, builds the dependency image, runs the browser test
+and scans for secrets.
 
-## Deploy
-
-The image needs the model bundle and the 250 MB demo database, which are too large for git.
-They ship as a release asset; the build downloads and checksum-verifies it.
+## Container
 
 ```
-# once, from a machine that has data/app.db and artifacts/final
-$env:GITHUB_TOKEN = "..."        # contents:write
-uv run python scripts/publish_data.py --repo <owner>/<repo>
+docker build -t fraud-loop .
+docker run --rm -p 8000:8000 --env-file secrets/llm.env fraud-loop
 ```
 
-That writes `configs/data.json` with the asset URL and its SHA-256. Commit it. Then deploy
-`Dockerfile.deploy`, which fetches the bundle, verifies the hash, and unpacks it into the
-image. Render reads `render.yaml`; any Docker host works the same way.
-
-After it is up:
-
-```
-uv run python scripts/smoke.py https://your-app.onrender.com --expect-llm
-```
-
-That scores samples, opens a case and fails unless `summary_source` is `llm`, which is the
-only end-to-end proof that the key reached the provider.
-
-Image 1.38 GB, 233 MB resident after scoring a batch, measured locally. A bad checksum
-fails the build at the fetch step instead of shipping a mismatched database.
-
-Secret handling: the key is set in the host dashboard (`sync: false` in `render.yaml`),
-never in git and never in a layer. `LLM_DAILY_CAP` bounds the spend if the URL is public,
-on top of a hard monthly cap on the provider key itself.
-
-For a local container, --env-file leaves the value in Docker metadata. Mount it instead:
-
-```
-docker run --rm -p 8000:8000 \
-  -e LLM_KEY_FILE=/run/secrets/key \
-  -e LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1 \
-  -e OPENCODE_MODEL=deepseek-v4.1-flash \
-  -v "$PWD/secrets/llm.key:/run/secrets/key:ro" fraud-loop
-```
-
-With that mount, docker inspect and /proc/1/environ show a path, not the key.
-
-
-
+The demo database and the model bundle are 119 MB together, too large for git, so they ship as
+a release asset. `Dockerfile.deploy` downloads it at build time and verifies its SHA-256, so a
+mismatch fails the build instead of shipping the wrong data. The image is 1.38 GB and runs as
+a non-root user.
