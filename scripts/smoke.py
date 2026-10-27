@@ -1,7 +1,7 @@
-"""Smoke test a running instance: health, score, case, and whether the summary came from the model.
+﻿"""Smoke test a running instance: health, score, case, and whether the summary came from the model.
 
     uv run python scripts/smoke.py http://127.0.0.1:8000
-    uv run python scripts/smoke.py https://your-app.onrender.com --expect-llm
+    uv run python scripts/smoke.py https://<host> --expect-llm
 
 `--expect-llm` fails unless a fresh case ends up with `summary_source: llm`, which is the
 only end-to-end proof that the key reached the provider.
@@ -71,3 +71,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

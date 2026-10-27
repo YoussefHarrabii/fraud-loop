@@ -33,8 +33,8 @@ retention.maybe_purge(force=True)
 
 CSP = (
     "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
-    "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    "style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; "
+    "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 )
 
 
