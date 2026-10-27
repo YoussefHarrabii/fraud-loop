@@ -139,6 +139,18 @@ That writes `configs/data.json` with the asset URL and its SHA-256. Commit it. T
 `Dockerfile.deploy`, which fetches the bundle, verifies the hash, and unpacks it into the
 image. Render reads `render.yaml`; any Docker host works the same way.
 
+After it is up:
+
+```
+uv run python scripts/smoke.py https://your-app.onrender.com --expect-llm
+```
+
+That scores samples, opens a case and fails unless `summary_source` is `llm`, which is the
+only end-to-end proof that the key reached the provider.
+
+Image 1.38 GB, 233 MB resident after scoring a batch, measured locally. A bad checksum
+fails the build at the fetch step instead of shipping a mismatched database.
+
 Secret handling: the key is set in the host dashboard (`sync: false` in `render.yaml`),
 never in git and never in a layer. `LLM_DAILY_CAP` bounds the spend if the URL is public,
 on top of a hard monthly cap on the provider key itself.

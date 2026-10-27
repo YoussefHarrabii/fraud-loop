@@ -3,7 +3,8 @@ FROM python:3.11-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
