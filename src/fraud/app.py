@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from fraud import access, case_facts, limits, monitoring, serving, store
+from fraud import access, case_facts, limits, monitoring, retention, serving, store
 
 BASE = Path(__file__).resolve().parents[2]
 STATIC = BASE / "src" / "fraud" / "static"
@@ -29,6 +29,7 @@ app = FastAPI(
 )
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 store.init_db()
+retention.maybe_purge(force=True)
 
 CSP = (
     "default-src 'self'; script-src 'self' 'unsafe-inline'; "
@@ -104,6 +105,7 @@ def health() -> dict:
 
 @app.post("/score", dependencies=[Depends(guard("score"))])
 def score(tx: Txn) -> dict:
+    retention.maybe_purge()
     b = get_bundle()
     history = store.get_history(tx.cc_num, tx.ts)
     row = serving.build_one(history, tx.model_dump())
@@ -185,6 +187,7 @@ def samples(limit: int = Query(8, ge=1, le=50)) -> list[dict]:
 
 @app.post("/demo/inject-drift", dependencies=[Depends(guard("drift"))])
 def inject_drift(n: int = 60) -> dict:
+    retention.maybe_purge()
     n = max(1, min(n, 300))
     b = get_bundle()
     picked = store.sample_transactions(n)

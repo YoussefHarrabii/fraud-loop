@@ -340,6 +340,23 @@ def key_use_count(key_hash: str) -> int:
     return int(row[0]) if row else 0
 
 
+def purge_older_than(cutoff: str) -> dict:
+    """Delete demo rows older than an ISO timestamp. Never touches key_usage.
+
+    Key usage is the one thing that must not age out: deleting it would hand a spent key
+    its uses back.
+    """
+    con = connect()
+    try:
+        cases = con.execute("DELETE FROM cases WHERE created_at < ?", (cutoff,)).rowcount
+        requests = con.execute("DELETE FROM requests WHERE created_at < ?", (cutoff,)).rowcount
+        days = con.execute("DELETE FROM llm_usage WHERE day < ?", (cutoff[:10],)).rowcount
+        con.commit()
+    finally:
+        con.close()
+    return {"cases": int(cases), "requests": int(requests), "llm_days": int(days)}
+
+
 def counts() -> dict:
     con = connect()
     def one(sql: str) -> int:

@@ -135,6 +135,20 @@ That writes `configs/access_keys.json` (SHA-256 hashes, committed, safe to ship)
 - Counters live in SQLite, so on a host with an ephemeral filesystem they reset on restart.
   The registry ships in the image, so the keys themselves survive.
 
+## Demo data
+
+Cases and request rows are what visitors leave behind, so they expire. `FRAUD_RETENTION_HOURS`
+defaults to 24 and the purge runs at startup and at most once an hour on writes. Key usage
+never expires: that would hand a spent invitation its uses back.
+
+```
+uv run python scripts/reset_demo.py             # cases, requests, key and llm usage
+uv run python scripts/reset_demo.py --keep-keys
+```
+
+Run it before `publish_data.py` so test rows never ship inside the image. Transactions are
+never touched by either the script or the purge.
+
 ## Hardening
 
 - No secret in the image, the repo, the URL space or any response; tested against a running container.
