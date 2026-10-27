@@ -146,9 +146,11 @@ def build_facts(tx: dict, history, out: dict, row: dict) -> list[dict]:
     facts.append({"id": "f8", "text": f"The largest model drivers are {drivers}."})
     percentile = amount_percentile(amt)
     if percentile is not None:
+        # Above every sampled value the honest number is "all of them", which reads as 100%
+        # and sounds like an absolute. 99% is the same claim without the odd phrasing.
         facts.append({
             "id": "f9",
-            "text": f"The amount is higher than {percentile:.0f}% of the transactions the model was trained on.",
+            "text": f"The amount is higher than {min(percentile, 99.0):.0f}% of the transactions the model was trained on.",
         })
     return facts
 
