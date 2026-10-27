@@ -38,7 +38,7 @@ flowchart TD
     D --> E[Cost threshold<br/>90 percent recall on validation]
     E --> F{Flag?}
     F -- pass --> G[Logged, no case]
-    F -- flag --> H[Case per card<br/>eight facts computed in code]
+    F -- flag --> H[Case per card<br/>numbered facts computed in code]
     H --> I[Template summary]
     H -. valid invitation key .-> J[Model-written summary]
     J --> K{Every number and citation checks out?}
@@ -53,10 +53,11 @@ flowchart TD
     P --> C
 ```
 
-Scoring is per transaction, cases are per card. The summary is built from eight numbered facts
-and the model only rewrites them: every number and citation is checked, and two failures fall
-back to the template. A candidate replaces the live model only if its recall does not drop and
-its cost is lower on a paired bootstrap.
+Scoring is per transaction, cases are per card. The summary is built from a numbered list of
+facts and the model only rewrites them: every number and citation is checked, and two failures
+fall back to the template. A triage hint next to the summary (check merchant, contact cardholder,
+likely benign) is computed in code, never by the model. A candidate replaces the live model only
+if its recall does not drop and its cost is lower on a paired bootstrap.
 
 ## What is real
 
@@ -87,8 +88,8 @@ downloaded or generated before a first run.
 The LLM report is optional:
 
 ```
-OPENAI_API_KEY=...        # or any compatible key, with LLM_BASE_URL if needed
-LLM_MODEL=gpt-4o-mini
+OPENCODE_KEY=oc_...       # or OPENAI_API_KEY, or any compatible key with LLM_BASE_URL
+OPENCODE_MODEL=deepseek-v4.1-flash
 LLM_DAILY_CAP=40
 ```
 
