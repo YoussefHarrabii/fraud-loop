@@ -56,3 +56,11 @@ def test_registry_is_hashes_without_plaintext():
     assert document["keys"]
     assert all("key" not in entry for entry in document["keys"])
     assert "fr_" not in text
+
+def test_no_sql_string_interpolation_in_the_store():
+    """A tripwire, not proof: it catches the obvious way this goes wrong later."""
+    import re
+
+    text = (ROOT / "src" / "fraud" / "store.py").read_text(encoding="utf-8")
+    for pattern in (r'execute\(\s*f"', r"execute\(\s*f'", r'read_sql_query\(\s*f', r"execute\([^)]*\.format\("):
+        assert not re.search(pattern, text), pattern

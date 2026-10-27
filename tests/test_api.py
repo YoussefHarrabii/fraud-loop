@@ -231,3 +231,33 @@ def test_security_headers(client):
     assert response.headers["Referrer-Policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     assert "Strict-Transport-Security" not in response.headers
+
+def test_sql_injection_payloads_are_inert(client, insert):
+    insert("C1", "2020-12-10 10:00:00", 10)
+    before = client.get("/health").json()["counts"]
+
+    payloads = [
+        "' OR 1=1 --",
+        "C1'; DROP TABLE cases; --",
+        "C1' UNION SELECT 1,2,3,4,5,6 --",
+        'C1" OR ""="',
+    ]
+    for value in payloads:
+        body = {**_payload(value), "merchant": value}
+        response = client.post("/score", json=body)
+        assert response.status_code == 200, value
+        out = response.json()
+        assert out["cc_num"] == value
+        if out["case_id"]:
+            case = client.get(f"/cases/{out['case_id']}").json()
+            assert case["cc_num"] == value, "the payload must be stored as text, not executed"
+
+    assert client.get("/cases", params={"status": "' OR 1=1 --"}).json() == []
+    assert client.get("/cases", params={"status": "open"}).status_code == 200
+    assert client.get("/cases", params={"status": "x' UNION SELECT * FROM cases --"}).json() == []
+    assert client.get("/cases", params={"limit": "1 OR 1=1"}).status_code == 422
+
+    after = client.get("/health").json()["counts"]
+    assert after["transactions"] == before["transactions"]
+    assert after["cases_total"] >= before["cases_total"]
+    assert client.get("/cases").status_code == 200, "the cases table still exists"
