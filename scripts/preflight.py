@@ -21,6 +21,9 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+# Model metadata and summaries may carry non-ASCII; keep the console from raising.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def redact(url: str) -> str:
     parts = urlsplit(url)
