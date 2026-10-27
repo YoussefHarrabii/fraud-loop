@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: fraud-review-loop
+    name: fraud-loop
     runtime: docker
     dockerfilePath: ./Dockerfile.deploy
     plan: free

@@ -20,7 +20,7 @@ STATIC.mkdir(parents=True, exist_ok=True)
 DOCS = os.getenv("FRAUD_DOCS") == "1"
 
 app = FastAPI(
-    title="Fraud Detection",
+    title="Fraud / Loop",
     version="0.3",
     # Off unless FRAUD_DOCS=1. A public demo has no reason to publish its schema.
     docs_url="/docs" if DOCS else None,
