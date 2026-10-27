@@ -18,6 +18,7 @@ scripts/*
 !scripts/fetch_data.py
 configs/*
 !configs/data.json
+!configs/access_keys.json
 data/generated
 data/generated_buggy
 data/processed

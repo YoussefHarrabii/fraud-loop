@@ -5,12 +5,12 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from fraud import case_facts, monitoring, serving, store
+from fraud import access, case_facts, monitoring, serving, store
 
 BASE = Path(__file__).resolve().parents[2]
 STATIC = BASE / "src" / "fraud" / "static"
@@ -64,7 +64,7 @@ def health() -> dict:
 
 
 @app.post("/score")
-def score(tx: Txn, background: BackgroundTasks) -> dict:
+def score(tx: Txn) -> dict:
     b = get_bundle()
     history = store.get_history(tx.cc_num, tx.ts)
     row = serving.build_one(history, tx.model_dump())
@@ -75,7 +75,6 @@ def score(tx: Txn, background: BackgroundTasks) -> dict:
         facts = case_facts.build_facts(tx.model_dump(), history, out, row)
         summary = case_facts.template_summary(facts)
         case_id = store.create_case(rid, tx.cc_num, facts, summary, "template", b.card["created_at"])
-        background.add_task(case_facts.refresh_case_summary, case_id, facts)
     return {**out, "id": rid, "case_id": case_id, "cc_num": tx.cc_num, "trans_num": tx.trans_num}
 
 
@@ -100,6 +99,34 @@ def decide(case_id: int, body: Decision) -> dict:
     if out is None:
         raise HTTPException(status_code=404, detail="case not found")
     return out
+
+
+@app.get("/access")
+def access_status(x_access_key: str | None = Header(default=None)) -> dict:
+    """Validate a key without spending a use. The key travels in a header, never a URL."""
+    return access.status(x_access_key)
+
+
+@app.post("/cases/{case_id}/report", status_code=202)
+def generate_report(
+    case_id: int,
+    background: BackgroundTasks,
+    x_access_key: str | None = Header(default=None),
+) -> dict:
+    case = store.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    record, reason, remaining = access.consume(x_access_key)
+    if reason != "ok":
+        raise HTTPException(status_code=access.REASON_STATUS[reason], detail=reason)
+    background.add_task(_write_report, case_id, case["facts"], record)
+    return {"status": "queued", "remaining": remaining, "expires_at": record.get("expires_at")}
+
+
+def _write_report(case_id: int, facts: list[dict], record: dict) -> None:
+    """A use is spent when queued and refunded when the provider does not deliver."""
+    if case_facts.refresh_case_summary(case_id, facts) != "llm":
+        access.refund(record)
 
 
 @app.get("/requests")

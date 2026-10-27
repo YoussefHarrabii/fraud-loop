@@ -196,9 +196,10 @@ def summarize(facts: list[dict]) -> tuple[str, str]:
     return fallback, "template_fallback"
 
 
-def refresh_case_summary(case_id: int, facts: list[dict]) -> None:
+def refresh_case_summary(case_id: int, facts: list[dict]) -> str:
     from fraud import store
 
     text, source = summarize(facts)
     if source != "template":
         store.update_case_summary(case_id, text, source)
+    return source

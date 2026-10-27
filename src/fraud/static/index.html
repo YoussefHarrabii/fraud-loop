@@ -172,6 +172,16 @@
     color-scheme: dark; min-width: 0;
   }
   input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .keybar { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+  .keybar .eyebrow { white-space: nowrap; }
+  .keybar form { display: flex; gap: 8px; align-items: center; }
+  .keybar input { width: 300px; padding: 9px 11px; border: 1px solid var(--hairline); background: transparent; color: var(--cream); font: inherit; font-size: 13px; border-radius: 4px; }
+  .keybar input::placeholder { color: var(--stone-700); }
+  .keybar input:focus { outline: none; border-color: var(--stone-600); }
+  .keybar.unlocked form { display: none; }
+  .keybar .btn { padding: 9px 14px; }
+  .keybar .caption { max-width: 60ch; }
+
   .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
   .btn {
     height: 40px; padding: 0 20px; border: 0; border-radius: 9999px; cursor: pointer;
@@ -322,6 +332,16 @@
   <div class="status"><span class="dot"></span><span class="eyebrow">local / cpu</span></div>
 </header>
 
+<div class="keybar container" id="keybar">
+  <span class="eyebrow">AI case report</span>
+  <form id="key-form" autocomplete="off">
+    <input id="key-input" placeholder="Access key from your invitation" spellcheck="false" autocomplete="off" aria-label="Access key" />
+    <button class="btn ghost" type="submit">Unlock</button>
+  </form>
+  <button class="btn ghost" id="key-reset" type="button" hidden>Change key</button>
+  <span class="caption" id="key-state">Locked. Each invitation key allows 5 model-written summaries. The rest of the desk is open.</span>
+</div>
+
 <main class="container">
   <section id="view-score" class="view active">
     <div class="hero set">
@@ -465,11 +485,76 @@
   const date = (iso) => iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
   const cleanMerchant = (m) => String(m || "").replace(/^fraud_/, "");
 
+  const KEY_STORE = "fraud.access.key";
+  let accessKey = sessionStorage.getItem(KEY_STORE) || "";
+  let keyInfo = null;
+
   async function api(path, opts = {}) {
-    const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (accessKey) headers["X-Access-Key"] = accessKey;
+    const res = await fetch(path, { ...opts, headers });
     if (!res.ok) throw new Error(await res.text() || res.statusText);
     return res.json();
   }
+
+  function lockKey() {
+    accessKey = "";
+    keyInfo = null;
+    sessionStorage.removeItem(KEY_STORE);
+    $("#keybar").classList.remove("unlocked");
+    $("#key-reset").hidden = true;
+    $("#key-form").hidden = false;
+    renderKeyState();
+  }
+
+  function renderKeyState(message) {
+    if (!accessKey) {
+      $("#key-state").textContent = "Locked. Each invitation key allows 5 model-written summaries. The rest of the desk is open.";
+      return;
+    }
+    if (message) { $("#key-state").textContent = message; return; }
+    if (!keyInfo) { $("#key-state").textContent = "Checking key…"; return; }
+    $("#key-state").textContent = `${keyInfo.remaining} of ${keyInfo.max_uses} AI reports left · expires ${date(keyInfo.expires_at)}`;
+  }
+
+  async function refreshKeyState() {
+    if (!accessKey) { renderKeyState(); return; }
+    try {
+      const s = await api("/access");
+      if (s.valid) {
+        keyInfo = s;
+        $("#keybar").classList.add("unlocked");
+        $("#key-reset").hidden = false;
+        $("#key-form").hidden = true;
+        renderKeyState();
+      } else {
+        const reason = { unknown: "That key is not recognised.", expired: "That key has expired.", exhausted: "That key has used all of its reports." }[s.reason] || "That key cannot be used.";
+        lockKey();
+        renderKeyState(reason + " The rest of the desk stays open.");
+      }
+    } catch (err) {
+      renderKeyState("Key check failed: " + err.message);
+    }
+  }
+
+  $("#key-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const value = $("#key-input").value.trim();
+    if (!value) return;
+    accessKey = value;
+    sessionStorage.setItem(KEY_STORE, value);
+    await refreshKeyState();
+    if (keyInfo) {
+      $("#key-input").value = "";
+      toast("AI reports unlocked.");
+      if (selectedCase) loadCase(selectedCase);
+    }
+  };
+
+  $("#key-reset").onclick = () => {
+    lockKey();
+    $("#key-input").focus();
+  };
 
   let toastTimer;
   function toast(message, isError = false) {
@@ -619,19 +704,53 @@
         <div class="facts">${facts}</div>
         <div class="eyebrow" style="margin-top:24px">Summary <span class="badge">${source}</span></div>
         <p class="summary">${esc(c.summary)}</p>
+        <div class="actions" id="report-actions">${reportControls(c)}</div>
         ${open ? `<div class="actions"><button class="btn accent" id="confirm">Confirmed fraud</button><button class="btn ghost" id="false">False alarm</button></div>`
                : `<div class="note">Decision: ${esc(c.decision)} by ${esc(c.analyst || "analyst")} &middot; ${date(c.decided_at)}</div>`}
       `;
+      const report = $("#report");
+      if (report) report.onclick = () => requestReport(c.id);
       if (open) {
         $("#confirm").onclick = () => decideCase(c.id, "confirmed_fraud");
         $("#false").onclick = () => decideCase(c.id, "false_alarm");
       }
-      if (c.summary_source === "template" && poll < 4) {
+      if (c.summary_source !== "template" && poll > 0) refreshKeyState();
+      if (c.summary_source === "template" && poll > 0 && poll < 15) {
         setTimeout(() => {
           if (selectedCase === id) loadCase(id, poll + 1);
         }, 1500);
       }
     } catch (err) { toast("Case: " + err.message, true); }
+  }
+
+  function reportControls(c) {
+    if (!accessKey || !keyInfo) {
+      return `<button class="btn ghost" type="button" disabled>Generate AI report</button>
+              <span class="caption">Locked. Enter an invitation key above.</span>`;
+    }
+    const label = c.summary_source === "llm" ? "Regenerate AI report" : "Generate AI report";
+    return `<button class="btn ghost" id="report" type="button">${label}</button>
+            <span class="caption">${keyInfo.remaining} of ${keyInfo.max_uses} left on this key</span>`;
+  }
+
+  async function requestReport(id) {
+    const button = $("#report");
+    if (button) { button.disabled = true; button.textContent = "Writing…"; }
+    try {
+      const out = await api(`/cases/${id}/report`, { method: "POST" });
+      toast(`${out.remaining} report${out.remaining === 1 ? "" : "s"} left on this key.`);
+      await refreshKeyState();
+      loadCase(id, 1);
+    } catch (err) {
+      const text = String(err.message || "");
+      const reason = text.includes("expired") ? "That key has expired."
+        : text.includes("exhausted") ? "No reports left on that key."
+        : text.includes("unknown") ? "That key is not recognised."
+        : "Report: " + text;
+      toast(reason, true);
+      await refreshKeyState();
+      if (selectedCase === id) loadCase(id);
+    }
   }
 
   async function decideCase(id, decision) {
@@ -720,6 +839,7 @@
 
   populateSelects();
   loadSamples();
+  refreshKeyState();
   loadCases();
   loadMonitoring();
   loadHealth();

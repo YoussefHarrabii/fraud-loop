@@ -18,6 +18,7 @@ RUN uv sync --frozen --no-dev
 FROM base AS app
 
 COPY src ./src
+COPY configs/access_keys.json ./configs/access_keys.json
 COPY data/app.db ./data/app.db
 COPY artifacts/final ./artifacts/final
 

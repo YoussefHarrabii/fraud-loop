@@ -3,6 +3,7 @@ import os
 import sqlite3
 import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 os.environ.setdefault("FRAUD_DB", str(Path(tempfile.mkdtemp(prefix="fraud-tests-")) / "app.db"))
@@ -113,3 +114,28 @@ def client(db, tiny_bundle, monkeypatch):
     monkeypatch.setattr(app_module, "_bundle", tiny_bundle)
     from fastapi.testclient import TestClient
     return TestClient(app_module.app)
+
+
+GOOD_KEY = "fr_test_good_key"
+EXPIRED_KEY = "fr_test_expired_key"
+
+
+@pytest.fixture
+def keys(tmp_path, monkeypatch):
+    """A two-key registry: one usable twice, one already expired."""
+    from fraud import access
+
+    path = tmp_path / "access_keys.json"
+    now = datetime.now(timezone.utc)
+    path.write_text(json.dumps({
+        "version": 1,
+        "keys": [
+            {"id": "a1", "label": "Test", "hash": access.digest(GOOD_KEY),
+             "max_uses": 2, "expires_at": (now + timedelta(days=1)).isoformat()},
+            {"id": "a2", "label": "Old", "hash": access.digest(EXPIRED_KEY),
+             "max_uses": 2, "expires_at": (now - timedelta(days=1)).isoformat()},
+        ],
+    }), encoding="utf-8")
+    monkeypatch.setattr(access, "REGISTRY", path)
+    monkeypatch.setattr(access, "CACHE", {"mtime": None, "keys": {}})
+    return {"good": GOOD_KEY, "expired": EXPIRED_KEY}

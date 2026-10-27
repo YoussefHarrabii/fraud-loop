@@ -1,4 +1,4 @@
-# Fraud review loop
+﻿# Fraud review loop
 
 An end-to-end fraud detection loop built around a model that is already good enough:
 the work here is everything that turns a score into a reviewable case, and a case into
@@ -115,6 +115,26 @@ LLM_DAILY_CAP=40
 No key means the template summary, which is the same text minus the rewriting. A failed
 or invalid call also falls back to the template.
 
+## Access keys
+
+The desk is open. The model-written summary is not.
+
+```
+uv run python scripts/mint_keys.py --count 100 --uses 5 --days 60
+```
+
+That writes `configs/access_keys.json` (SHA-256 hashes, committed, safe to ship) and
+`secrets/keys.csv` (plaintext, ignored, the only copy). Hand one key per application.
+
+- `POST /cases/{id}/report` with `X-Access-Key` spends one use and queues the summary.
+- `GET /access` reports remaining uses without spending one.
+- 401 unknown, 403 expired, 429 exhausted.
+- A use is refunded when the provider does not deliver, so a failed call costs nothing.
+- Keys never appear in a URL, a log line or a response. The browser keeps yours in
+  `sessionStorage` for the tab and sends it as a header.
+- Counters live in SQLite, so on a host with an ephemeral filesystem they reset on restart.
+  The registry ships in the image, so the keys themselves survive.
+
 ## Tests
 
 ```
@@ -123,7 +143,7 @@ uv run pytest --cov
 RUN_UI=1 uv run pytest tests/test_ui_e2e.py
 ```
 
-73 tests, 98 percent statement coverage on the core modules, gate at 80. CI runs the suite
+95 tests, 97 percent statement coverage on the core modules, gate at 80. CI runs the suite
 on Python 3.11 and 3.12, builds the dependency image, runs the browser test, and scans for
 secrets.
 
@@ -169,3 +189,5 @@ docker run --rm -p 8000:8000 \
 ```
 
 With that mount, docker inspect and /proc/1/environ show a path, not the key.
+
+

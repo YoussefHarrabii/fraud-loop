@@ -28,10 +28,18 @@ LLM_USAGE_DDL = """
     )
 """
 
+KEY_USAGE_DDL = """
+    CREATE TABLE IF NOT EXISTS key_usage (
+        key_hash TEXT PRIMARY KEY,
+        used INTEGER NOT NULL
+    )
+"""
+
 
 def init_db() -> None:
     con = connect()
     con.execute(LLM_USAGE_DDL)
+    con.execute(KEY_USAGE_DDL)
     con.execute("""
         CREATE TABLE IF NOT EXISTS requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -294,6 +302,42 @@ def llm_usage_today() -> dict:
     finally:
         con.close()
     return {"day": day, "used": int(row[0]) if row else 0}
+
+
+def consume_key_use(key_hash: str, max_uses: int) -> bool:
+    """Atomically spend one use of an access key. False when the key is exhausted."""
+    con = connect()
+    try:
+        con.execute(KEY_USAGE_DDL)
+        con.execute("INSERT OR IGNORE INTO key_usage (key_hash, used) VALUES (?, 0)", (key_hash,))
+        row = con.execute(
+            "UPDATE key_usage SET used = used + 1 WHERE key_hash = ? AND used < ? RETURNING used",
+            (key_hash, max(0, int(max_uses))),
+        ).fetchone()
+        con.commit()
+    finally:
+        con.close()
+    return row is not None
+
+
+def refund_key_use(key_hash: str) -> None:
+    con = connect()
+    try:
+        con.execute(KEY_USAGE_DDL)
+        con.execute("UPDATE key_usage SET used = used - 1 WHERE key_hash = ? AND used > 0", (key_hash,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def key_use_count(key_hash: str) -> int:
+    con = connect()
+    try:
+        con.execute(KEY_USAGE_DDL)
+        row = con.execute("SELECT used FROM key_usage WHERE key_hash = ?", (key_hash,)).fetchone()
+    finally:
+        con.close()
+    return int(row[0]) if row else 0
 
 
 def counts() -> dict:

@@ -84,3 +84,67 @@ def test_validation_and_missing_paths(client):
     assert mon["n"] == 0
     assert mon["drift_note"]
     assert client.get("/samples?limit=4").json() == []
+
+def _payload(cc="C1"):
+    return {
+        "cc_num": cc, "ts": "2020-12-15T12:00:00", "amt": 120.0,
+        "category": "shopping_net", "merchant": "merchant_a", "state": "CA", "city_pop": 1000,
+    }
+
+
+def test_access_endpoint_reports_the_key(client, keys):
+    good = client.get("/access", headers={"X-Access-Key": keys["good"]}).json()
+    assert good["valid"] is True
+    assert good["remaining"] == good["max_uses"] == 2
+    assert client.get("/access").json()["valid"] is False
+    assert client.get("/access", headers={"X-Access-Key": keys["expired"]}).json()["reason"] == "expired"
+
+
+def test_report_needs_a_valid_key(client, keys):
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+    assert client.post(f"/cases/{case_id}/report").status_code == 401
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": "fr_nope"}).status_code == 401
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["expired"]}).status_code == 403
+    assert client.post("/cases/99999/report", headers={"X-Access-Key": keys["good"]}).status_code == 404
+
+
+def test_report_spends_a_use_and_refuses_when_empty(client, keys, monkeypatch):
+    from fraud import case_facts
+
+    monkeypatch.setattr(case_facts, "refresh_case_summary", lambda case_id, facts: "llm")
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+
+    first = client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]})
+    assert first.status_code == 202
+    assert first.json()["status"] == "queued"
+    assert first.json()["remaining"] == 1
+
+    second = client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]})
+    assert second.json()["remaining"] == 0
+
+    third = client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]})
+    assert third.status_code == 429
+    assert third.json()["detail"] == "exhausted"
+
+
+def test_failed_report_gives_the_use_back(client, keys, monkeypatch):
+    from fraud import case_facts
+
+    monkeypatch.setattr(case_facts, "refresh_case_summary", lambda case_id, facts: "template_fallback")
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+    response = client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]})
+    assert response.status_code == 202
+    assert client.get("/access", headers={"X-Access-Key": keys["good"]}).json()["remaining"] == 2
+
+
+def test_score_never_calls_the_model_without_a_report(client, keys, monkeypatch):
+    from fraud import case_facts
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("scoring must not generate a report")
+
+    monkeypatch.setattr(case_facts, "refresh_case_summary", forbidden)
+    out = client.post("/score", json=_payload()).json()
+    assert out["case_id"]
+    case = client.get(f"/cases/{out['case_id']}").json()
+    assert case["summary_source"] == "template"

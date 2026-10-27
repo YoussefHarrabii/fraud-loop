@@ -23,12 +23,13 @@ FROM base AS app
 
 COPY src ./src
 COPY configs/data.json ./configs/data.json
+COPY configs/access_keys.json ./configs/access_keys.json
 COPY scripts/fetch_data.py ./scripts/fetch_data.py
 
 RUN python scripts/fetch_data.py --dest /app \
     && test -s /app/data/app.db \
     && test -s /app/artifacts/final/model.txt \
-    && rm -rf /app/scripts /app/configs
+    && rm -rf /app/scripts /app/configs/data.json
 
 ENV PYTHONPATH=/app/src \
     FRAUD_DB=/app/data/app.db \
