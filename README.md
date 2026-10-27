@@ -127,8 +127,8 @@ browser test and scans for secrets. The suite creates `fraud_test` itself and ne
 docker compose up --build
 ```
 
-The image is 1.38 GB, runs as a non-root user, takes the model from the repo and the database
-from `DATABASE_URL`. No secret is in a layer.
+The image is 1.04 GB, runs as a non-root user, needs no writable filesystem, takes the model
+from the repo and the database from `DATABASE_URL`. No secret is in a layer.
 
 ## Deploy
 
@@ -136,11 +136,33 @@ Heroku, container stack, Basic dyno plus Postgres Essential:
 
 ```
 heroku stack:set container -a <app>
-heroku config:set OPENCODE_KEY=... -a <app>      # and OPENCODE_MODEL, LLM_DAILY_CAP
+heroku config:set OPENCODE_KEY=... OPENCODE_MODEL=deepseek-v4.1-flash LLM_DAILY_CAP=40 -a <app>
 heroku container:push web -a <app>
 heroku container:release web -a <app>
-heroku run python scripts/seed_pg.py --reset -a <app>
+
+# seed from your machine: the image has no scripts/ and no data/, by design
+DATABASE_URL=$(heroku config:get DATABASE_URL -a <app>) uv run python scripts/seed_pg.py --reset
+DATABASE_URL=$(heroku config:get DATABASE_URL -a <app>) uv run python scripts/preflight.py \
+    --url https://<app>.herokuapp.com
 ```
 
 `heroku.yml` builds the same `Dockerfile`. There is no bundle to publish and no release asset to
 keep alive: the model is in the repo, the transactions go into Postgres once.
+
+## Simulate a deploy locally
+
+The same image, the same lifecycle, without Heroku:
+
+```
+docker compose up -d db
+docker build -t fraud-loop .
+docker run -d --rm --name dyno --read-only --tmpfs /tmp:rw,size=64m \
+    --network frauddetection_default -p 8014:9999 \
+    -e PORT=9999 -e DATABASE_URL=postgresql://postgres:postgres@db:5432/fraud fraud-loop
+uv run python scripts/preflight.py --url http://127.0.0.1:8014
+docker restart dyno      # a dyno restart; cases and key counters must survive
+```
+
+`--read-only` is the point: it proves the app keeps nothing on the local filesystem, so an
+ephemeral dyno cannot lose state. A one-off command is `docker run --rm ... fraud-loop
+.venv/bin/python -c "..."`, which is what `heroku run` would be.
