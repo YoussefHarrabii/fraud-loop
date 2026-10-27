@@ -1,12 +1,15 @@
 import json
 import os
-import sqlite3
-import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from urllib.parse import urlsplit
 
-os.environ.setdefault("FRAUD_DB", str(Path(tempfile.mkdtemp(prefix="fraud-tests-")) / "app.db"))
+# Tests get their own database. Assigning (not setdefault) guarantees a stray
+# DATABASE_URL in the shell can never point the suite at real data.
+TEST_URL = os.environ.get(
+    "FRAUD_TEST_DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:5432/fraud_test"
+)
+os.environ["DATABASE_URL"] = TEST_URL
 
 # Tests must never reach a real provider. `load_dotenv` does not override values that are
 # already set, so an empty string here also blocks `secrets/llm.env`.
@@ -15,41 +18,61 @@ os.environ["OPENCODE_KEY"] = ""
 os.environ["OPENCODE_API_KEY"] = ""
 os.environ["OPENROUTER_API_KEY"] = ""
 
-import joblib
-import lightgbm as lgb
-import numpy as np
-import pandas as pd
-import pytest
-from sklearn.linear_model import LogisticRegression
+import joblib  # noqa: E402
+import lightgbm as lgb  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import psycopg  # noqa: E402
+import pytest  # noqa: E402
+from sklearn.linear_model import LogisticRegression  # noqa: E402
 
-from fraud import features, serving
-
-
-def _tx_table(db: Path) -> None:
-    con = sqlite3.connect(db)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            cc_num TEXT, ts_epoch INTEGER, trans_num TEXT, amt REAL,
-            category TEXT, merchant TEXT, state TEXT, city_pop REAL, is_fraud INTEGER
-        )
-    """)
-    con.commit()
-    con.close()
+from fraud import features, serving  # noqa: E402
 
 
-def insert_tx(db, cc, ts, amt, category="shopping_net", merchant="merchant_a",
+def ensure_database(url: str) -> None:
+    """Create the database named in `url` when the server does not have it yet."""
+    parts = urlsplit(url)
+    name = parts.path.lstrip("/")
+    admin = url.rsplit("/", 1)[0] + "/postgres"
+    with psycopg.connect(admin, autocommit=True, connect_timeout=5) as con:
+        if not con.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
+            con.execute(f'CREATE DATABASE "{name}"')
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _database():
+    from fraud import store
+
+    ensure_database(TEST_URL)
+    store.reset_db()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _clean_tables():
+    """Every test starts against empty tables, and the transaction history too."""
+    from fraud import store
+
+    store.clear_demo()
+    with store.connect() as con:
+        con.execute("TRUNCATE transactions")
+    yield
+
+
+def insert_tx(cc, ts, amt, category="shopping_net", merchant="merchant_a",
               state="CA", city_pop=1000, is_fraud=0):
-    con = sqlite3.connect(db)
-    con.execute(
-        "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?)",
-        (cc, int(pd.Timestamp(ts).value // 10**9), f"tx-{uuid.uuid4().hex[:10]}",
-         float(amt), category, merchant, state, float(city_pop), int(is_fraud)),
-    )
-    con.commit()
-    con.close()
+    from fraud import store
+
+    with store.connect() as con:
+        con.execute(
+            "INSERT INTO transactions (cc_num, ts_epoch, trans_num, amt, category, merchant, state, "
+            "city_pop, is_fraud) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (cc, int(pd.Timestamp(ts).value // 10**9), f"tx-{uuid.uuid4().hex[:10]}",
+             float(amt), category, merchant, state, int(city_pop), int(is_fraud)),
+        )
 
 
-def _write_bundle(path: Path) -> Path:
+def _write_bundle(path):
     rng = np.random.default_rng(7)
     n = 240
     cats = {
@@ -92,19 +115,16 @@ def tiny_bundle(tiny_bundle_path):
 
 
 @pytest.fixture
-def db(tmp_path, monkeypatch):
-    from fraud import store
-    monkeypatch.setattr(store, "DB", tmp_path / "test.db")
-    store.init_db()
-    _tx_table(store.DB)
-    return store.DB
+def db():
+    """The connection string under test. Kept so existing tests read the same."""
+    return TEST_URL
 
 
 @pytest.fixture
 def insert(db):
     def _insert(cc, ts, amt, category="shopping_net", merchant="merchant_a",
                 state="CA", city_pop=1000, is_fraud=0):
-        return insert_tx(db, cc, ts, amt, category, merchant, state, city_pop, is_fraud)
+        return insert_tx(cc, ts, amt, category, merchant, state, city_pop, is_fraud)
     return _insert
 
 

@@ -71,22 +71,12 @@ def test_duplicate_decision_updates_one_case(db):
     assert store.get_case(cid)["analyst"] == "second"
 
 
-def test_source_column_migration(tmp_path, monkeypatch):
-    import sqlite3
-    from fraud import store
-
-    path = tmp_path / "old.db"
-    con = sqlite3.connect(path)
-    con.execute("CREATE TABLE requests (id INTEGER PRIMARY KEY)")
-    con.commit()
-    con.close()
-
-    monkeypatch.setattr(store, "DB", path)
+def test_init_db_is_idempotent(db):
     store.init_db()
-    con = sqlite3.connect(path)
-    columns = [r[1] for r in con.execute("PRAGMA table_info(requests)")]
-    con.close()
-    assert "source" in columns
+    store.init_db()
+    assert store.counts() == {
+        "transactions": 0, "requests": 0, "cases_open": 0, "cases_total": 0,
+    }
 
 
 def test_recent_requests_and_summary_update(db):

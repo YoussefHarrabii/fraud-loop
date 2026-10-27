@@ -37,7 +37,9 @@ Thumbs.db
 # experiments and model artifacts
 mlflow.db
 mlflow.db-*
-artifacts/
+# the shipped model is small enough to version; candidates stay local
+artifacts/*
+!artifacts/final/
 # local env (prefer secrets/llm.env)
 .env
 .env.*

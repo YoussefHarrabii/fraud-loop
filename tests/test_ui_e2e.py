@@ -1,17 +1,22 @@
 import os
-import sqlite3
 import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
+import psycopg
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PORT = 8765
 URL = f"http://127.0.0.1:{PORT}"
+
+UI_URL = os.environ.get(
+    "FRAUD_UI_DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:5432/fraud_ui"
+)
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("RUN_UI"),
@@ -38,26 +43,36 @@ def _epoch(value: str) -> int:
 
 
 @pytest.fixture(scope="module")
-def live_server(tmp_path_factory, tiny_bundle_path):
-    db = tmp_path_factory.mktemp("ui") / "app.db"
-    con = sqlite3.connect(db)
-    con.execute("""
-        CREATE TABLE transactions (
-            cc_num TEXT, ts_epoch INTEGER, trans_num TEXT, amt REAL,
-            category TEXT, merchant TEXT, state TEXT, city_pop REAL, is_fraud INTEGER
-        )
-    """)
-    con.executemany(
-        "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?)",
-        [(cc, _epoch(ts), tn, amt, cat, mer, st, pop, fraud)
-         for cc, tn, ts, amt, cat, mer, st, pop, fraud in _rows()],
-    )
-    con.commit()
-    con.close()
+def live_server(tiny_bundle_path):
+    from fraud import store
+
+    parts = urlsplit(UI_URL)
+    name = parts.path.lstrip("/")
+    admin = UI_URL.rsplit("/", 1)[0] + "/postgres"
+    with psycopg.connect(admin, autocommit=True) as con:
+        if not con.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone():
+            con.execute(f'CREATE DATABASE "{name}"')
+
+    # Built with a direct connection, not through `store`: the in-process pool stays
+    # pointed at the test database and the subprocess gets its own DATABASE_URL.
+    with psycopg.connect(UI_URL, autocommit=True) as con:
+        for table in store.TABLES:
+            con.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        for ddl in (store.TRANSACTIONS_DDL, store.TX_INDEX_DDL, store.REQUESTS_DDL,
+                    store.REQUESTS_INDEX_DDL, store.CASES_DDL, store.CASES_INDEX_DDL,
+                    store.LLM_USAGE_DDL, store.KEY_USAGE_DDL):
+            con.execute(ddl)
+        with con.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO transactions (cc_num, ts_epoch, trans_num, amt, category, merchant, state, "
+                "city_pop, is_fraud) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                [(cc, _epoch(ts), tn, amt, cat, mer, st, pop, fraud)
+                 for cc, tn, ts, amt, cat, mer, st, pop, fraud in _rows()],
+            )
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
-    env["FRAUD_DB"] = str(db)
+    env["DATABASE_URL"] = UI_URL
     env["FRAUD_ARTIFACTS"] = str(tiny_bundle_path)
     env["OPENAI_API_KEY"] = ""
     env["OPENROUTER_API_KEY"] = ""

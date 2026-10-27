@@ -71,12 +71,18 @@ deployment.
 
 ## Run
 
+Postgres holds the transaction history and the app tables. There is no local database file.
+
 ```
+docker compose up -d db
 uv sync --frozen --all-groups
+uv run python scripts/seed_pg.py --reset          # 1.79M rows, once
 uv run uvicorn fraud.app:app --port 8000
 ```
 
-Needs `data/app.db` and `artifacts/final`, both gitignored and both built by `scripts/`.
+`DATABASE_URL` defaults to `postgresql://postgres:postgres@127.0.0.1:5432/fraud`, which is
+what compose publishes. `artifacts/final` (7.6 MB) is in the repo, so nothing has to be
+downloaded or generated before a first run.
 
 The LLM report is optional:
 
@@ -104,21 +110,37 @@ uv run python scripts/mint_keys.py --count 100 --uses 5 --days 90
 ## Tests
 
 ```
+docker compose up -d db      # the suite runs against Postgres, database `fraud_test`
 uv run ruff check src tests scripts
 uv run pytest --cov
 RUN_UI=1 uv run pytest tests/test_ui_e2e.py
 ```
 
-127 tests, 97 percent statement coverage on the core modules, gate at 80. CI runs 3.11 and 3.12,
-audits dependencies, builds the dependency image, runs the browser test and scans for secrets.
+128 tests, 97 percent statement coverage on the core modules, gate at 80. CI runs 3.11 and 3.12
+against a Postgres service container, audits dependencies, builds the dependency image, runs the
+browser test and scans for secrets. The suite creates `fraud_test` itself and never touches
+`fraud`.
 
 ## Container
 
 ```
-docker build -t fraud-loop .
-docker run --rm -p 8000:8000 --env-file secrets/llm.env fraud-loop
+docker compose up --build
 ```
 
-The demo database and model bundle are 119 MB, too large for git, so they ship as a release
-asset that the build downloads and checksum-verifies. The image is 1.38 GB, runs as a non-root
-user, and takes its key from the runtime environment rather than a layer.
+The image is 1.38 GB, runs as a non-root user, takes the model from the repo and the database
+from `DATABASE_URL`. No secret is in a layer.
+
+## Deploy
+
+Heroku, container stack, Basic dyno plus Postgres Essential:
+
+```
+heroku stack:set container -a <app>
+heroku config:set OPENCODE_KEY=... -a <app>      # and OPENCODE_MODEL, LLM_DAILY_CAP
+heroku container:push web -a <app>
+heroku container:release web -a <app>
+heroku run python scripts/seed_pg.py --reset -a <app>
+```
+
+`heroku.yml` builds the same `Dockerfile`. There is no bundle to publish and no release asset to
+keep alive: the model is in the repo, the transactions go into Postgres once.

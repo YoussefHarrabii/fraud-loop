@@ -15,11 +15,10 @@ def _case():
 
 
 def _age(rid, cid, stamp):
-    con = store.connect()
-    con.execute("UPDATE cases SET created_at = ? WHERE id = ?", (stamp, cid))
-    con.execute("UPDATE requests SET created_at = ? WHERE id = ?", (stamp, rid))
-    con.commit()
-    con.close()
+    when = datetime.fromisoformat(stamp)
+    with store.connect() as con:
+        con.execute("UPDATE cases SET created_at = %s WHERE id = %s", (when, cid))
+        con.execute("UPDATE requests SET created_at = %s WHERE id = %s", (when, rid))
 
 
 def test_purge_removes_only_old_rows(db):
@@ -44,10 +43,8 @@ def test_purge_never_touches_key_usage(db):
 
 def test_purge_drops_past_llm_days(db):
     store.consume_llm_credit(5)
-    con = store.connect()
-    con.execute("UPDATE llm_usage SET day = '2000-01-01'")
-    con.commit()
-    con.close()
+    with store.connect() as con:
+        con.execute("UPDATE llm_usage SET day = '2000-01-01'")
     result = store.purge_older_than("2020-01-01T00:00:00+00:00")
     assert result["llm_days"] == 1
     assert store.llm_usage_today()["used"] == 0
@@ -107,7 +104,7 @@ def test_reset_script_clears_rows_and_keeps_transactions(db, insert, monkeypatch
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    monkeypatch.setattr(sys, "argv", ["reset_demo.py", "--db", str(store.DB)])
+    monkeypatch.setattr(sys, "argv", ["reset_demo.py"])
     assert module.main() == 0
 
     counts = store.counts()

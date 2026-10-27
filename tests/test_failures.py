@@ -1,14 +1,9 @@
-import sqlite3
-
 import pytest
 
 from fraud import monitoring, serving, store
 
 
-def test_counts_without_tables(tmp_path, monkeypatch):
-    path = tmp_path / "empty.db"
-    sqlite3.connect(path).close()
-    monkeypatch.setattr(store, "DB", path)
+def test_counts_on_an_empty_database(db):
     assert store.counts() == {
         "transactions": 0, "requests": 0, "cases_open": 0, "cases_total": 0,
     }

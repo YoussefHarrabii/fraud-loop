@@ -1,0 +1,3 @@
+# The shipped model is read as bytes by LightGBM and joblib; keep line endings untouched.
+artifacts/final/* -text
+*.joblib binary
