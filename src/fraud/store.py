@@ -111,9 +111,20 @@ CASES_DDL = """
         model_version TEXT NOT NULL,
         decision TEXT,
         decided_at TIMESTAMPTZ,
-        analyst TEXT
+        analyst TEXT,
+        recommendation TEXT
     )
 """
+
+# Existing databases predate the column; adding it is a no-op when it is already there.
+CASES_MIGRATE = "ALTER TABLE cases ADD COLUMN IF NOT EXISTS recommendation TEXT"
+
+CASES_COLS = (
+    "id, request_id, cc_num, created_at, status, facts_json, summary, summary_source, "
+    "prompt_version, facts_hash, model_version, decision, decided_at, analyst, recommendation"
+)
+# Built once from a constant, so no request value is ever formatted into SQL.
+CASES_SELECT = "SELECT " + CASES_COLS + " FROM cases"
 
 TX_INDEX_DDL = "CREATE INDEX IF NOT EXISTS idx_tx_card_ts ON transactions (cc_num, ts_epoch)"
 CASES_INDEX_DDL = "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases (status, id DESC)"
@@ -130,6 +141,7 @@ def init_db() -> None:
             LLM_USAGE_DDL, KEY_USAGE_DDL,
         ):
             con.execute(ddl)
+        con.execute(CASES_MIGRATE)
 
 
 def reset_db() -> None:
@@ -217,16 +229,17 @@ def recent_requests(limit: int = 20) -> list[dict]:
     ]
 
 
-def create_case(request_id: int, cc_num: str, facts: list[dict], summary: str, source: str, model_version: str) -> int:
+def create_case(request_id: int, cc_num: str, facts: list[dict], summary: str, source: str,
+                model_version: str, recommendation: str | None = None) -> int:
     facts_json = json.dumps(facts)
     facts_hash = hashlib.sha256(facts_json.encode()).hexdigest()[:16]
     with connect() as con:
         cur = con.execute(
             "INSERT INTO cases (request_id, cc_num, created_at, status, facts_json, summary, summary_source, "
-            "prompt_version, facts_hash, model_version) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            "prompt_version, facts_hash, model_version, recommendation) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
             (request_id, str(cc_num), datetime.now(timezone.utc), "open", facts_json,
-             summary, source, "v1", facts_hash, model_version),
+             summary, source, "v2", facts_hash, model_version, recommendation),
         ).fetchone()
     return int(cur[0])
 
@@ -245,12 +258,13 @@ def _case_dict(row) -> dict:
         "facts": json.loads(row[5]), "summary": row[6], "summary_source": row[7],
         "prompt_version": row[8], "facts_hash": row[9], "model_version": row[10],
         "decision": row[11], "decided_at": _iso(row[12]), "analyst": row[13],
+        "recommendation": row[14],
     }
 
 
 def get_case(case_id: int) -> dict | None:
     with connect() as con:
-        row = con.execute("SELECT * FROM cases WHERE id = %s", (case_id,)).fetchone()
+        row = con.execute(CASES_SELECT + " WHERE id = %s", (case_id,)).fetchone()
         if row is None:
             return None
         out = _case_dict(row)
@@ -266,10 +280,10 @@ def list_cases(status: str | None = "open", limit: int = 50) -> list[dict]:
     with connect() as con:
         if status:
             rows = con.execute(
-                "SELECT * FROM cases WHERE status = %s ORDER BY id DESC LIMIT %s", (status, limit)
+                CASES_SELECT + " WHERE status = %s ORDER BY id DESC LIMIT %s", (status, limit)
             ).fetchall()
         else:
-            rows = con.execute("SELECT * FROM cases ORDER BY id DESC LIMIT %s", (limit,)).fetchall()
+            rows = con.execute(CASES_SELECT + " ORDER BY id DESC LIMIT %s", (limit,)).fetchall()
         cases = [_case_dict(r) for r in rows]
         if cases:
             ids = [c["request_id"] for c in cases]

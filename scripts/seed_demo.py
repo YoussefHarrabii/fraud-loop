@@ -17,7 +17,10 @@ for _, r in candidates.head(200).iterrows():
         continue
     rid = store.log_request(r, out, row, bundle.card["created_at"])
     facts = case_facts.build_facts(r, history, out, row)
-    cid = store.create_case(rid, r.cc_num, facts, case_facts.template_summary(facts), "template", bundle.card["created_at"])
+    cid = store.create_case(
+        rid, r.cc_num, facts, case_facts.template_summary(facts), "template",
+        bundle.card["created_at"], recommendation=case_facts.recommend(out, row),
+    )
     print(f"seeded case {cid} from request {rid}, score {out['score']:.4f}, amount {r.amt:.2f}")
     break
 else:

@@ -13,9 +13,57 @@ ROOT = Path(__file__).resolve().parents[2]
 NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 DEFAULT_DAILY_CAP = 40
 
+# A triage hint, never a verdict. The model may narrate, but this is computed in code.
+RECOMMENDATIONS = ("check merchant", "contact cardholder", "likely benign")
+
 OPENAI_BASE = "https://api.openai.com/v1"
 OPENCODE_BASE = "https://opencode.ai/inference/go/openai/v1"
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
+_AMOUNT_SAMPLE: list[float] | None = None
+
+
+def _amount_sample() -> list[float]:
+    """Amounts from the training window, used for the peer-comparison fact.
+
+    Sans the sample the fact is simply left out, so a missing reference profile degrades to
+    the facts that always work.
+    """
+    global _AMOUNT_SAMPLE
+    if _AMOUNT_SAMPLE is None:
+        try:
+            from fraud import monitoring
+
+            profile = monitoring.load_profile() or {}
+            values = profile.get("features", {}).get("amt", {}).get("sample") or []
+            _AMOUNT_SAMPLE = [float(v) for v in values if v is not None]
+        except Exception:
+            _AMOUNT_SAMPLE = []
+    return _AMOUNT_SAMPLE
+
+
+def amount_percentile(amt: float) -> float | None:
+    """Share of training-window transactions at or below this amount, 0 to 100."""
+    sample = _amount_sample()
+    if len(sample) < 100:
+        return None
+    return 100.0 * sum(1 for v in sample if v <= amt) / len(sample)
+
+
+def recommend(out: dict, row: dict) -> str:
+    """Triage hint from the score and the merchant relationship.
+
+    A new merchant at a high score is a merchant-risk question. The same score at a known
+    merchant is more likely account takeover, which is the cardholder's problem. Anything
+    close to the threshold is usually noise.
+    """
+    threshold = float(out.get("threshold") or 0.0)
+    score = float(out.get("score") or 0.0)
+    ratio = score / threshold if threshold > 0 else 0.0
+    if ratio < 3.0:
+        return "likely benign"
+    return "check merchant" if row.get("new_merchant") else "contact cardholder"
+
 
 
 def _load_env() -> None:
@@ -94,14 +142,31 @@ def build_facts(tx: dict, history, out: dict, row: dict) -> list[dict]:
     else:
         facts.append({"id": "f6", "text": "There is no prior transaction at this merchant."})
     facts.append({"id": "f7", "text": f"Model score is {out['score']:.3f}; the review threshold is {out['threshold']:.3f}."})
-    drivers = ", ".join(d["feature"] for d in out["top_drivers"][:3])
+    drivers = ", ".join(_driver(d) for d in out["top_drivers"][:3])
     facts.append({"id": "f8", "text": f"The largest model drivers are {drivers}."})
+    percentile = amount_percentile(amt)
+    if percentile is not None:
+        facts.append({
+            "id": "f9",
+            "text": f"The amount is higher than {percentile:.0f}% of the transactions the model was trained on.",
+        })
     return facts
+
+
+def _driver(entry: dict) -> str:
+    """Feature name plus the direction it moved the score, when SHAP gives us one."""
+    name = entry["feature"]
+    contribution = float(entry.get("contribution") or 0.0)
+    if contribution > 0:
+        return f"{name} (raises the score)"
+    if contribution < 0:
+        return f"{name} (lowers the score)"
+    return name
 
 
 def template_summary(facts: list[dict]) -> str:
     by_id = {f["id"]: f["text"] for f in facts}
-    return " ".join(by_id[k] for k in ["f1", "f2", "f4", "f5", "f7"] if k in by_id)
+    return " ".join(by_id[k] for k in ["f1", "f9", "f4", "f7"] if k in by_id)
 
 
 def _numbers(text: str) -> list[float]:
@@ -151,9 +216,11 @@ def _call_llm(facts: list[dict]) -> str:
     if config is None:
         raise RuntimeError("no key")
     system = (
-        "You summarize fraud case facts for an analyst. Use only the facts. "
-        "Do not decide or claim fraud. Cite fact ids like [f1] after each sentence. "
-        "Use only numbers that appear in the facts. Three sentences maximum."
+        "You brief a fraud analyst on one flagged transaction. Use only the facts. "
+        "Do not decide or claim fraud, and do not give advice. "
+        "Cite fact ids like [f1] after each sentence. Use only numbers that appear in the facts. "
+        "Three sentences maximum. Explain what pushed the score up and what argues against fraud; "
+        "leave out facts that do neither."
     )
     payload = {
         "model": config["model"],

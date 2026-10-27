@@ -25,11 +25,13 @@ def test_case_flow(db):
     tx = SimpleNamespace(cc_num="C1", trans_num="t1", ts=datetime(2020, 12, 15), amt=10.0)
     rid = store.log_request(tx, out, {"amt": 10.0}, "test-model")
     facts = [{"id": "f1", "text": "Amount is $10.00."}]
-    cid = store.create_case(rid, "C1", facts, "summary", "template", "test-model")
+    cid = store.create_case(rid, "C1", facts, "summary", "template", "test-model",
+                            recommendation="check merchant")
 
     case = store.get_case(cid)
     assert case["status"] == "open"
     assert case["amount"] == 10.0
+    assert case["recommendation"] == "check merchant"
     assert len(store.list_cases("open")) == 1
     assert store.case_stats()["open"] == 1
 

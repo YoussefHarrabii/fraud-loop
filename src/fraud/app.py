@@ -115,7 +115,10 @@ def score(tx: Txn) -> dict:
     if out["decision"] == "flag":
         facts = case_facts.build_facts(tx.model_dump(), history, out, row)
         summary = case_facts.template_summary(facts)
-        case_id = store.create_case(rid, tx.cc_num, facts, summary, "template", b.card["created_at"])
+        case_id = store.create_case(
+            rid, tx.cc_num, facts, summary, "template", b.card["created_at"],
+            recommendation=case_facts.recommend(out, row),
+        )
     return {**out, "id": rid, "case_id": case_id, "cc_num": tx.cc_num, "trans_num": tx.trans_num}
 
 

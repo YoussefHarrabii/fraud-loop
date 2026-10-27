@@ -18,12 +18,55 @@ def _facts():
     return case_facts.build_facts({"amt": 90.0}, history, out, row)
 
 
-def test_facts_have_ids_and_numbers():
+def test_facts_have_ids_and_numbers(monkeypatch):
+    monkeypatch.setattr(case_facts, "_amount_sample", lambda: [])
     facts = _facts()
     assert [f["id"] for f in facts] == [f"f{i}" for i in range(1, 9)]
     assert "$90.00" in facts[0]["text"]
     assert "4.5x" in facts[0]["text"]
     assert "0.910" in facts[6]["text"]
+
+
+def test_peer_percentile_fact(monkeypatch):
+    monkeypatch.setattr(case_facts, "_amount_sample", lambda: [float(i) for i in range(100)])
+    facts = _facts()
+    assert [f["id"] for f in facts][-1] == "f9"
+    assert "91%" in facts[-1]["text"]
+    assert "trained on" in facts[-1]["text"]
+
+
+def test_no_peer_fact_without_a_reference(monkeypatch):
+    monkeypatch.setattr(case_facts, "_amount_sample", lambda: [])
+    assert [f["id"] for f in _facts()] == [f"f{i}" for i in range(1, 9)]
+
+
+def test_driver_direction_comes_from_the_contribution():
+    facts = case_facts.build_facts(
+        {"amt": 90.0},
+        pd.DataFrame({"amt": [10.0, 20.0]}),
+        {
+            "score": 0.9,
+            "threshold": 0.1,
+            "top_drivers": [
+                {"feature": "amt", "contribution": 0.4},
+                {"feature": "hour", "contribution": -0.2},
+                {"feature": "city_pop", "contribution": 0.0},
+            ],
+        },
+        {"hour": 3, "is_night": 1, "card_age_days": 400, "tx_count_1h": 1, "tx_count_24h": 2,
+         "tx_count_7d": 9, "new_merchant": 0, "new_category": 0, "secs_since_same_merchant": -1},
+    )
+    drivers = [f for f in facts if f["id"] == "f8"][0]["text"]
+    assert "amt (raises the score)" in drivers
+    assert "hour (lowers the score)" in drivers
+    assert "city_pop," not in drivers
+
+
+def test_recommendation_follows_score_and_merchant_novelty():
+    assert case_facts.recommend({"score": 0.9, "threshold": 0.071}, {"new_merchant": 1}) == "check merchant"
+    assert case_facts.recommend({"score": 0.9, "threshold": 0.071}, {"new_merchant": 0}) == "contact cardholder"
+    assert case_facts.recommend({"score": 0.08, "threshold": 0.071}, {"new_merchant": 1}) == "likely benign"
+    assert case_facts.recommend({"score": 0.9, "threshold": 0.0}, {"new_merchant": 1}) == "likely benign"
 
 
 def test_template_uses_facts():

@@ -700,7 +700,7 @@
         </div>
         <div class="eyebrow" style="margin-top:24px">Facts</div>
         <div class="facts">${facts}</div>
-        <div class="eyebrow" style="margin-top:24px">Summary <span class="badge">${source}</span></div>
+        <div class="eyebrow" style="margin-top:24px">Summary <span class="badge">${source}</span>${c.recommendation ? ` <span class="badge">${esc(c.recommendation)}</span>` : ""}</div>
         <p class="summary">${esc(c.summary)}</p>
         <div class="actions" id="report-actions">${reportControls(c)}</div>
         ${open ? `<div class="actions"><button class="btn accent" id="confirm">Confirmed fraud</button><button class="btn ghost" id="false">False alarm</button></div>`
