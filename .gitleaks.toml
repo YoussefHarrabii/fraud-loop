@@ -1,0 +1,11 @@
+title = "fraud-loop"
+
+[extend]
+useDefault = true
+
+# The default rules cover provider formats. This one covers the demo's own keys.
+[[rules]]
+id = "fraud-loop-invitation-key"
+description = "Invitation key for the AI report"
+regex = '''fr_[A-Za-z0-9_-]{30,}'''
+keywords = ["fr_"]
