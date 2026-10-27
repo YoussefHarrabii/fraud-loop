@@ -1,5 +1,6 @@
 """FastAPI scoring service, analyst case queue, and demo UI."""
 
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,16 @@ BASE = Path(__file__).resolve().parents[2]
 STATIC = BASE / "src" / "fraud" / "static"
 STATIC.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Fraud Detection", version="0.3")
+DOCS = os.getenv("FRAUD_DOCS") == "1"
+
+app = FastAPI(
+    title="Fraud Detection",
+    version="0.3",
+    # Off unless FRAUD_DOCS=1. A public demo has no reason to publish its schema.
+    docs_url="/docs" if DOCS else None,
+    redoc_url="/redoc" if DOCS else None,
+    openapi_url="/openapi.json" if DOCS else None,
+)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 store.init_db()
 

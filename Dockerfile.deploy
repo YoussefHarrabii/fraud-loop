@@ -16,8 +16,10 @@ RUN apt-get update \
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.3 /uv /uvx /bin/
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# The manifest is mounted for the install and never copied into a layer.
+RUN --mount=type=bind,source=pyproject.toml,target=/build/pyproject.toml \
+    --mount=type=bind,source=uv.lock,target=/build/uv.lock \
+    sh -c 'cp /build/pyproject.toml /build/uv.lock /app/ && uv sync --frozen --no-dev && rm -f /app/pyproject.toml /app/uv.lock'
 
 FROM base AS app
 

@@ -40,3 +40,19 @@ def test_no_secret_files_are_tracked():
         return
     secret = [f for f in files if f.endswith(".env") or f.startswith("secrets/") or f == ".env"]
     assert secret == []
+
+def test_schema_and_docs_are_not_public(client):
+    for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert "X-Access-Key" not in response.text
+
+
+def test_registry_is_hashes_without_plaintext():
+    import json
+
+    text = (ROOT / "configs" / "access_keys.json").read_text(encoding="utf-8")
+    document = json.loads(text)
+    assert document["keys"]
+    assert all("key" not in entry for entry in document["keys"])
+    assert "fr_" not in text
