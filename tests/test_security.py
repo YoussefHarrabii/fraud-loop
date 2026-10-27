@@ -51,7 +51,7 @@ def test_schema_and_docs_are_not_public(client):
 def test_registry_is_hashes_without_plaintext():
     import json
 
-    text = (ROOT / "configs" / "access_keys.json").read_text(encoding="utf-8")
+    text = (ROOT / "configs" / "key_registry.json").read_text(encoding="utf-8")
     document = json.loads(text)
     assert document["keys"]
     assert all("key" not in entry for entry in document["keys"])

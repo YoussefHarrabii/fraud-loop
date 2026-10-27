@@ -1,4 +1,4 @@
-﻿"""Smoke test a running instance: health, score, case, and whether the summary came from the model.
+"""Smoke test a running instance: health, score, case, and whether the summary came from the model.
 
     uv run python scripts/smoke.py http://127.0.0.1:8000
     uv run python scripts/smoke.py https://<host> --expect-llm

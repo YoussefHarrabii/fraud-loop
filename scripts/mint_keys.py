@@ -1,9 +1,9 @@
-﻿"""Mint invitation keys for the LLM report.
+"""Mint invitation keys for the LLM report.
 
 Writes two files:
 
-- `configs/access_keys.json` â€” hashes, labels, expiry, use limit. Committed, safe to ship.
-- `secrets/keys.csv`         â€” plaintext keys, ignored. The only copy. Back it up.
+- `configs/key_registry.json` — hashes, labels, expiry, use limit. Committed, safe to ship.
+- `secrets/keys.csv`         — plaintext keys, ignored. The only copy. Back it up.
 
 Re-running with `--force` replaces the registry and invalidates every key already sent out.
 """
@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fraud.access import digest  # noqa: E402
 
-REGISTRY = ROOT / "configs" / "access_keys.json"
+REGISTRY = ROOT / "configs" / "key_registry.json"
 PLAIN = ROOT / "secrets" / "keys.csv"
 
 

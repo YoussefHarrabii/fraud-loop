@@ -86,7 +86,11 @@ def test_score_case_and_drift(live_server):
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1400, "height": 1000})
         errors = []
+        csp = []
+        fonts = []
         page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.on("console", lambda msg: csp.append(msg.text[:160]) if "Content Security Policy" in msg.text else None)
+        page.on("response", lambda res: fonts.append(res.url) if "/static/vendor/fonts/" in res.url else None)
         page.goto(live_server)
         page.wait_for_selector(".sample")
 
@@ -112,6 +116,8 @@ def test_score_case_and_drift(live_server):
             page.wait_for_timeout(500)
         else:
             raise AssertionError("drift injection did not land")
+        assert not csp, csp
+        assert fonts, "no web font was fetched: the stylesheet or the CSP is broken"
         assert not errors
 
         browser.close()

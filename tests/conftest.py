@@ -125,7 +125,7 @@ def keys(tmp_path, monkeypatch):
     """A two-key registry: one usable twice, one already expired."""
     from fraud import access
 
-    path = tmp_path / "access_keys.json"
+    path = tmp_path / "key_registry.json"
     now = datetime.now(timezone.utc)
     path.write_text(json.dumps({
         "version": 1,

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REGISTRY = Path(os.getenv("FRAUD_KEYS", ROOT / "configs" / "access_keys.json"))
+REGISTRY = Path(os.getenv("FRAUD_KEYS", ROOT / "configs" / "key_registry.json"))
 CACHE: dict = {"mtime": None, "keys": {}}
 
 REASON_STATUS = {"unknown": 401, "expired": 403, "exhausted": 429}

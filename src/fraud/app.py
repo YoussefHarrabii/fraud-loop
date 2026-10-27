@@ -1,4 +1,4 @@
-﻿"""FastAPI scoring service, analyst case queue, and demo UI."""
+"""FastAPI scoring service, analyst case queue, and demo UI."""
 
 import os
 import uuid
@@ -206,4 +206,5 @@ def inject_drift(n: int = 60) -> dict:
         store.log_request(tx, out, row, b.card["created_at"], source="injected")
         flagged += int(out["decision"] == "flag")
     return {"injected": len(picked), "flagged": flagged}
+
 

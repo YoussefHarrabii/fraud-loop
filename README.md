@@ -1,4 +1,4 @@
-﻿# Fraud / Loop
+# Fraud / Loop
 
 An end-to-end fraud detection loop built around a model that is already good enough. The
 interesting part is what turns a score into a reviewable case, and a case into a retraining

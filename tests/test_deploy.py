@@ -24,7 +24,7 @@ def test_dockerignore_keeps_the_fetch_script():
     lines = [line.strip() for line in (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()]
     assert "!scripts/fetch_data.py" in lines
     assert "!configs/data.json" in lines
-    assert "!configs/access_keys.json" in lines
+    assert "!configs/key_registry.json" in lines
     assert lines.index("scripts/*") < lines.index("!scripts/fetch_data.py")
     assert "secrets" in lines
     assert ".env" in lines
@@ -32,7 +32,7 @@ def test_dockerignore_keeps_the_fetch_script():
 
 def test_images_ship_the_hashed_registry():
     for name in ("Dockerfile", "Dockerfile.deploy"):
-        assert "configs/access_keys.json" in (ROOT / name).read_text(encoding="utf-8")
+        assert "configs/key_registry.json" in (ROOT / name).read_text(encoding="utf-8")
 
 
 def test_render_manifest_leaves_the_key_to_the_dashboard():

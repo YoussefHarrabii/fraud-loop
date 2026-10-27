@@ -24,7 +24,7 @@ RUN useradd --create-home --uid 10001 appuser \
     && chown 10001:10001 /app /app/data /app/artifacts
 
 COPY --chown=10001:10001 src ./src
-COPY --chown=10001:10001 configs/access_keys.json ./configs/access_keys.json
+COPY --chown=10001:10001 configs/key_registry.json ./configs/key_registry.json
 COPY --chown=10001:10001 data/app.db ./data/app.db
 COPY --chown=10001:10001 artifacts/final ./artifacts/final
 

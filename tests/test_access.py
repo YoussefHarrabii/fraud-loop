@@ -61,7 +61,7 @@ def test_missing_registry_means_no_keys(tmp_path, monkeypatch, db):
 
 
 def test_committed_registry_holds_hashes_only():
-    path = ROOT / "configs" / "access_keys.json"
+    path = ROOT / "configs" / "key_registry.json"
     registry = json.loads(path.read_text(encoding="utf-8"))
     assert registry["keys"], "mint at least one key"
     for entry in registry["keys"]:
