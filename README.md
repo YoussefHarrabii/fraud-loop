@@ -25,10 +25,9 @@ Chronological split, no shuffling.
 | Share of fraud dollars caught | 99.36 percent |
 | Holdout PR-AUC | 0.886 |
 
-The PR-AUC was 0.977 before the data audit. Two bugs inflated it: velocity windows divided
-microseconds as if they were nanoseconds, so "last hour" meant 42 days, and the generator
-tied daypart and category to the date. Both are fixed and the data is regenerated. 0.886 is
-the honest number.
+The figures come after a data audit that removed two leaks: the velocity windows were off by
+three orders of magnitude, and the generator tied daypart to the date. The dataset is
+generated locally and not committed, so these numbers are from that run.
 
 ## The loop
 
