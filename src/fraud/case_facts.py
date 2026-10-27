@@ -1,5 +1,6 @@
 """Case facts, LLM summary, and the numeric/citation check. No raw text goes to the model."""
 
+import hashlib
 import json
 import os
 import re
@@ -12,10 +13,39 @@ ROOT = Path(__file__).resolve().parents[2]
 NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 DEFAULT_DAILY_CAP = 40
 
+OPENAI_BASE = "https://api.openai.com/v1"
+OPENCODE_BASE = "https://opencode.ai/inference/go/openai/v1"
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
 
 def _load_env() -> None:
     load_dotenv(ROOT / ".env")
     load_dotenv(ROOT / "secrets" / "llm.env")
+
+
+def llm_config() -> dict | None:
+    """Provider settings from the environment. None when no key is set.
+
+    Order: OpenAI, then OpenCode Console, then OpenRouter. `LLM_BASE_URL` wins over all
+    three so any other OpenAI-compatible endpoint works without code changes.
+    """
+    _load_env()
+    openai_key = os.getenv("OPENAI_API_KEY")
+    opencode_key = os.getenv("OPENCODE_KEY") or os.getenv("OPENCODE_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    key = openai_key or opencode_key or openrouter_key
+    if not key:
+        return None
+    if os.getenv("LLM_BASE_URL"):
+        base = os.environ["LLM_BASE_URL"]
+    elif openai_key:
+        base = OPENAI_BASE
+    elif opencode_key:
+        base = OPENCODE_BASE
+    else:
+        base = OPENROUTER_BASE
+    model = os.getenv("LLM_MODEL") or os.getenv("OPENCODE_MODEL") or "gpt-4o-mini"
+    return {"key": key, "base": base.rstrip("/"), "model": model}
 
 
 def daily_cap() -> int:
@@ -82,37 +112,55 @@ def validate_summary(summary: str, facts: list[dict]) -> bool:
     return True
 
 
+def _session_id(facts: list[dict]) -> str:
+    """Stable per-case id. OpenCode Go requires one for routing and prompt caching."""
+    text = "|".join(f["text"] for f in facts)
+    return "fraud-" + hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def _headers(config: dict, facts: list[dict]) -> dict:
+    headers = {
+        "Authorization": f"Bearer {config['key']}",
+        "User-Agent": "fraud-review-loop/0.1",
+    }
+    if "opencode.ai" in config["base"]:
+        headers["x-opencode-session"] = _session_id(facts)
+    return headers
+
+
 def _call_llm(facts: list[dict]) -> str:
-    key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-    if not key:
+    config = llm_config()
+    if config is None:
         raise RuntimeError("no key")
-    base = os.getenv("LLM_BASE_URL")
-    if not base:
-        base = "https://openrouter.ai/api/v1" if os.getenv("OPENROUTER_API_KEY") else "https://api.openai.com/v1"
-    model = os.getenv("LLM_MODEL", "gpt-4o-mini")
     system = (
         "You summarize fraud case facts for an analyst. Use only the facts. "
         "Do not decide or claim fraud. Cite fact ids like [f1] after each sentence. "
         "Use only numbers that appear in the facts. Three sentences maximum."
     )
     payload = {
-        "model": model,
+        "model": config["model"],
         "temperature": 0,
-        "max_tokens": 180,
+        # Reasoning models spend part of this budget before writing anything, and the
+        # answer comes back empty at 180. You pay for tokens used, not for the cap.
+        "max_tokens": 2000,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": json.dumps([{"id": f["id"], "fact": f["text"]} for f in facts])},
         ],
     }
-    r = httpx.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=payload, timeout=20)
+    r = httpx.post(
+        f"{config['base']}/chat/completions",
+        headers=_headers(config, facts),
+        json=payload,
+        timeout=60,
+    )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
 def summarize(facts: list[dict]) -> tuple[str, str]:
-    _load_env()
     fallback = template_summary(facts)
-    if not (os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")):
+    if llm_config() is None:
         return fallback, "template"
     from fraud import store
 

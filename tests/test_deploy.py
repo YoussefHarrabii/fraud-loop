@@ -5,10 +5,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_deploy_image_bakes_no_key():
-    text = (ROOT / "Dockerfile.deploy").read_text(encoding="utf-8")
-    assert "OPENAI_API_KEY" not in text
-    assert "OPENROUTER_API_KEY" not in text
-    assert "COPY . ." not in text
+    for name in ("Dockerfile.deploy", "Dockerfile"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert "OPENAI_API_KEY" not in text
+        assert "OPENCODE_KEY" not in text
+        assert "OPENROUTER_API_KEY" not in text
+        assert "COPY . ." not in text
 
 
 def test_deploy_image_fetches_data_with_checksum():

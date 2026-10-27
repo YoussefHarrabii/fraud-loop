@@ -101,13 +101,16 @@ uv run uvicorn fraud.app:app --host 127.0.0.1 --port 8000
 The app needs `data/app.db` and `artifacts/final`, both gitignored and both built by the
 scripts in `scripts/`. Without them `GET /health` fails at startup.
 
-LLM summaries are optional. Put a key in `secrets/llm.env` (ignored) or export it:
+LLM summaries are optional. Put the key in `secrets/llm.env` (ignored) or export it:
 
 ```
-OPENAI_API_KEY=...
-LLM_MODEL=gpt-4o-mini
+OPENCODE_KEY=oc_...
+OPENCODE_MODEL=deepseek-v4.1-flash
 LLM_DAILY_CAP=40
 ```
+
+`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or any OpenAI-compatible endpoint via
+`OPENAI_API_KEY` + `LLM_BASE_URL` work the same way. `LLM_BASE_URL` always wins.
 
 No key means the template summary, which is the same text minus the rewriting. A failed
 or invalid call also falls back to the template.

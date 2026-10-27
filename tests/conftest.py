@@ -7,6 +7,13 @@ from pathlib import Path
 
 os.environ.setdefault("FRAUD_DB", str(Path(tempfile.mkdtemp(prefix="fraud-tests-")) / "app.db"))
 
+# Tests must never reach a real provider. `load_dotenv` does not override values that are
+# already set, so an empty string here also blocks `secrets/llm.env`.
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["OPENCODE_KEY"] = ""
+os.environ["OPENCODE_API_KEY"] = ""
+os.environ["OPENROUTER_API_KEY"] = ""
+
 import joblib
 import lightgbm as lgb
 import numpy as np
