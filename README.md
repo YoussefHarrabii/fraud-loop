@@ -90,8 +90,8 @@ Without a key, or when a call fails, the case keeps the template summary.
 
 ## Access keys
 
-The desk is open. The model-written report is not: one key per application, five reports each,
-ninety days, so a public demo cannot spend someone else's budget.
+The desk is open. The model-written report is not: one key per recruiter, five reports each,
+ninety days, so a forwarded link does not multiply the spend.
 
 `POST /cases/{id}/report` with `X-Access-Key` spends a use; `GET /access` reports the rest
 without spending one. A use is refunded when the provider does not deliver. Keys are stored as
