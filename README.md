@@ -120,7 +120,7 @@ or invalid call also falls back to the template.
 The desk is open. The model-written summary is not.
 
 ```
-uv run python scripts/mint_keys.py --count 100 --uses 5 --days 60
+uv run python scripts/mint_keys.py --count 100 --uses 5 --days 90
 ```
 
 That writes `configs/access_keys.json` (SHA-256 hashes, committed, safe to ship) and
@@ -189,5 +189,6 @@ docker run --rm -p 8000:8000 \
 ```
 
 With that mount, docker inspect and /proc/1/environ show a path, not the key.
+
 
 

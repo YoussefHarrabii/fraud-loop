@@ -2,10 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fraud import access
+from fraud import access, store
 
 ROOT = Path(__file__).resolve().parents[1]
-
 
 def test_unknown_key_is_rejected(db, keys):
     result = access.status("fr_not_a_key")
@@ -33,6 +32,13 @@ def test_expired_key_is_rejected(db, keys):
     assert access.status(keys["expired"])["reason"] == "expired"
     record, reason, _ = access.consume(keys["expired"])
     assert record is None and reason == "expired"
+
+
+def test_expired_key_never_touches_the_counter(db, keys):
+    access.consume(keys["expired"])
+    access.consume(keys["expired"])
+    assert store.key_use_count(access.digest(keys["expired"])) == 0
+    assert access.status(keys["expired"])["remaining"] == 0
 
 
 def test_refund_gives_the_use_back(db, keys):

@@ -148,3 +148,49 @@ def test_score_never_calls_the_model_without_a_report(client, keys, monkeypatch)
     assert out["case_id"]
     case = client.get(f"/cases/{out['case_id']}").json()
     assert case["summary_source"] == "template"
+
+def test_expired_key_never_reaches_the_provider(client, keys, monkeypatch):
+    from fraud import access, case_facts, store
+
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return "llm"
+
+    monkeypatch.setattr(case_facts, "refresh_case_summary", spy)
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+
+    response = client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["expired"]})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "expired"
+    assert calls == [], "an expired key must not queue a report"
+    assert store.key_use_count(access.digest(keys["expired"])) == 0
+
+
+def test_unknown_key_never_reaches_the_provider(client, keys, monkeypatch):
+    from fraud import case_facts
+
+    calls = []
+    monkeypatch.setattr(case_facts, "refresh_case_summary", lambda *a, **k: calls.append(a) or "llm")
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": "fr_made_up"}).status_code == 401
+    assert calls == []
+
+
+def test_exhausted_key_never_reaches_the_provider(client, keys, monkeypatch):
+    from fraud import access, case_facts, store
+
+    calls = []
+    monkeypatch.setattr(case_facts, "refresh_case_summary", lambda *a, **k: calls.append(a) or "llm")
+    case_id = client.post("/score", json=_payload()).json()["case_id"]
+
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]}).status_code == 202
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]}).status_code == 202
+    calls.clear()
+
+    assert client.post(f"/cases/{case_id}/report", headers={"X-Access-Key": keys["good"]}).status_code == 429
+    assert calls == []
+    assert store.key_use_count(access.digest(keys["good"])) == 2
